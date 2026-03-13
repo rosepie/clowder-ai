@@ -108,6 +108,13 @@ updated: 2026-03-04
 - token/权限最小化（callback token、MCP env、审批动作）
 - 可审计（调用链可追踪）
 
+### G. Avatar Sync Contract（必须）
+
+- 新猫接入时，头像文件**必须同步到 `packages/web/public/avatars/`**
+- 源文件放 `assets/avatars/`，public 目录是运行时服务路径，缺文件 = 聊天界面无头像
+- 每个 variant 如有独立 avatar 字段，对应文件也必须同步
+- 接入 checklist 中必须包含"头像文件已复制到 web/public"验收项
+
 ---
 
 ## 结论问题逐条回答

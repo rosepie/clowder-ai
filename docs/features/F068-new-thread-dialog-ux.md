@@ -4,7 +4,6 @@ related_features: [F063]
 topics: [hub, ux, directory-picker, new-thread]
 doc_kind: spec
 created: 2026-03-06
-completed: 2026-03-06
 status: in-progress
 ---
 
@@ -52,7 +51,7 @@ team lead反馈"新建对话"弹窗**太难用**：
 | R4 | 删除自建目录浏览器 | AC-5 | ✅ |
 | R5 | 移动端响应式降级 | AC-7 | 🟡 待验证 |
 | R6 | 视觉设计确认 | AC-8 | ✅ |
-| R7 | 两步创建流程：选项目→填选项→确认 | AC-9 | 🔧 |
+| R7 | 两步创建流程：选项目→填选项→确认 | AC-9 | ✅ |
 
 ## Key Decisions
 

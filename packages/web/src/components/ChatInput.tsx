@@ -10,13 +10,7 @@ import { useInputHistoryStore } from '@/stores/inputHistoryStore';
 import { compressImage } from '@/utils/compressImage';
 import { ChatInputActionButton } from './ChatInputActionButton';
 import { ChatInputMenus } from './ChatInputMenus';
-import {
-  buildCatOptions,
-  buildWhisperOptions,
-  type CatOption,
-  detectMenuTrigger,
-  MODE_OPTIONS,
-} from './chat-input-options';
+import { buildCatOptions, buildWhisperOptions, type CatOption, detectMenuTrigger } from './chat-input-options';
 import { deriveImageLifecycleStatus, isImageLifecycleBlockingSend } from './chat-input-upload-state';
 import { HistorySearchModal } from './HistorySearchModal';
 import { ImagePreview } from './ImagePreview';
@@ -55,7 +49,6 @@ export function ChatInput({
 
   const [input, setInput] = useState(() => (threadId ? (threadDrafts.get(threadId) ?? '') : ''));
   const [showMentions, setShowMentions] = useState(false);
-  const [showModeMenu, setShowModeMenu] = useState(false);
   const [selectedIdx, setSelectedIdx] = useState(0);
   const [mentionStart, setMentionStart] = useState(-1);
   const [mentionFilter, setMentionFilter] = useState('');
@@ -105,8 +98,8 @@ export function ChatInput({
     );
   }, [catOptions, mentionFilter]);
 
-  const activeMenu = showMentions ? 'mention' : showModeMenu ? 'mode' : null;
-  const activeOptions = activeMenu === 'mention' ? filteredCatOptions : MODE_OPTIONS;
+  const activeMenu = showMentions ? 'mention' : null;
+  const activeOptions = activeMenu === 'mention' ? filteredCatOptions : [];
 
   const addHistoryEntry = useInputHistoryStore((s) => s.addEntry);
   const findHistoryMatch = useInputHistoryStore((s) => s.findMatch);
@@ -131,7 +124,6 @@ export function ChatInput({
         setGhostSuggestion(null);
         setImages([]);
         setShowMentions(false);
-        setShowModeMenu(false);
       }
     },
     [input, disabled, onSend, images, sendTemporarilyDisabled, whisperMode, whisperTargets, addHistoryEntry],
@@ -143,24 +135,7 @@ export function ChatInput({
 
   const closeMenus = useCallback(() => {
     setShowMentions(false);
-    setShowModeMenu(false);
   }, []);
-
-  const insertOption = useCallback(
-    (text: string) => {
-      setInput(text);
-      closeMenus();
-      setMentionStart(-1);
-      setTimeout(() => {
-        const ta = textareaRef.current;
-        if (ta) {
-          ta.focus();
-          ta.setSelectionRange(text.length, text.length);
-        }
-      }, 0);
-    },
-    [closeMenus],
-  );
 
   const insertMention = useCallback(
     (option: CatOption) => {
@@ -179,13 +154,8 @@ export function ChatInput({
       const val = e.target.value;
       setInput(val);
       const trigger = detectMenuTrigger(val, e.target.selectionStart);
-      if (trigger?.type === 'mode') {
-        setShowModeMenu(true);
-        setShowMentions(false);
-        setSelectedIdx(0);
-      } else if (trigger?.type === 'mention') {
+      if (trigger?.type === 'mention') {
         setShowMentions(true);
-        setShowModeMenu(false);
         setMentionStart(trigger.start);
         setMentionFilter(trigger.filter);
         setSelectedIdx(0);
@@ -243,16 +213,12 @@ export function ChatInput({
       }
       if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
-        if (activeMenu === 'mention') {
-          const opt = filteredCatOptions[selectedIdx];
-          if (!opt) {
-            closeMenus();
-            return;
-          }
-          insertMention(opt);
-        } else {
-          insertOption(MODE_OPTIONS[selectedIdx].insert);
+        const opt = filteredCatOptions[selectedIdx];
+        if (!opt) {
+          closeMenus();
+          return;
         }
+        insertMention(opt);
         return;
       }
       if (e.key === 'Escape') {
@@ -380,9 +346,7 @@ export function ChatInput({
     });
   }, []);
 
-  // Clamp selectedIdx when catOptions shrink — only when mention menu is active.
-  // selectedIdx is shared by mention/mode menus; clamping to catOptions.length
-  // when mode menu is open would corrupt mode selection.
+  // Clamp selectedIdx when catOptions shrink.
   useEffect(() => {
     if (!showMentions) return;
     setSelectedIdx((i) => Math.min(i, Math.max(0, filteredCatOptions.length - 1)));
@@ -407,21 +371,6 @@ export function ChatInput({
       return !prev;
     });
   }, [whisperOptions]);
-
-  const handleModeClick = useCallback(() => {
-    setShowMentions(false);
-    setMentionStart(-1);
-    setInput('/mode ');
-    setShowModeMenu(true);
-    setSelectedIdx(0);
-    setTimeout(() => {
-      const ta = textareaRef.current;
-      if (ta) {
-        ta.focus();
-        ta.setSelectionRange(6, 6);
-      }
-    }, 0);
-  }, []);
 
   // Sync input text to module-level draft map (covers all sources: typing, voice, mentions)
   useEffect(() => {
@@ -483,11 +432,9 @@ export function ChatInput({
       <ChatInputMenus
         catOptions={filteredCatOptions}
         showMentions={showMentions}
-        showModeMenu={showModeMenu}
         selectedIdx={selectedIdx}
         onSelectIdx={setSelectedIdx}
         onInsertMention={insertMention}
-        onInsertOption={insertOption}
         menuRef={menuRef}
       />
 
@@ -544,7 +491,6 @@ export function ChatInput({
         <MobileInputToolbar
           onAttach={() => fileInputRef.current?.click()}
           onWhisperToggle={handleWhisperToggle}
-          onModeClick={handleModeClick}
           onClose={() => setMobileToolbar(false)}
           disabled={disabled}
           sendDisabled={sendTemporarilyDisabled}
@@ -600,17 +546,6 @@ export function ChatInput({
               d="M5 9V7a5 5 0 0110 0v2a2 2 0 012 2v5a2 2 0 01-2 2H5a2 2 0 01-2-2v-5a2 2 0 012-2zm8-2v2H7V7a3 3 0 016 0z"
               clipRule="evenodd"
             />
-          </svg>
-        </button>
-
-        <button
-          onClick={handleModeClick}
-          disabled={disabled || sendTemporarilyDisabled}
-          className="hidden md:block p-3 rounded-xl text-gray-400 hover:text-indigo-500 hover:bg-white disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-          aria-label="Mode"
-        >
-          <svg className="w-5 h-5" viewBox="0 0 20 20" fill="currentColor">
-            <path d="M5 3a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2V5a2 2 0 00-2-2H5zM5 11a2 2 0 00-2 2v2a2 2 0 002 2h2a2 2 0 002-2v-2a2 2 0 00-2-2H5zM11 5a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V5zM14 11a1 1 0 011 1v1h1a1 1 0 110 2h-1v1a1 1 0 11-2 0v-1h-1a1 1 0 110-2h1v-1a1 1 0 011-1z" />
           </svg>
         </button>
 

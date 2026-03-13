@@ -2,6 +2,7 @@
  * F34: TTS Routes
  *
  * POST /api/tts/synthesize — Synthesize text to speech, returns audioUrl
+ * POST /api/tts/resynthesize — Re-attempt TTS for a failed voice block (F066 Phase 4)
  * GET  /api/tts/audio/:filename — Download audio file (auth-gated)
  */
 
@@ -14,6 +15,7 @@ import type { FastifyInstance, FastifyPluginOptions } from 'fastify';
 import { z } from 'zod';
 import { getCatVoice } from '../config/cat-voices.js';
 import type { TtsRegistry } from '../domains/cats/services/tts/TtsRegistry.js';
+import { getVoiceBlockSynthesizer } from '../domains/cats/services/tts/VoiceBlockSynthesizer.js';
 import { resolveUserId } from '../utils/request-identity.js';
 
 const synthesizeSchema = z.object({
@@ -136,6 +138,47 @@ export async function ttsRoutes(app: FastifyInstance, opts: TtsRouteOptions): Pr
     return {
       audioUrl: `/api/tts/audio/${resolvedFilename}`,
     };
+  });
+
+  // ── F066 Phase 4: Resynthesize endpoint ─────────────────────
+
+  const resynthesizeSchema = z.object({
+    text: z.string().min(1).max(5000),
+    catId: z.string().min(1),
+  });
+
+  /**
+   * POST /api/tts/resynthesize
+   * Re-attempt TTS synthesis for a failed voice block.
+   * Called by the frontend "重新合成" button on 🔇 warning cards.
+   */
+  app.post<{ Body: unknown }>('/api/tts/resynthesize', async (request, reply) => {
+    const userId = resolveUserId(request);
+    if (!userId) {
+      reply.status(401);
+      return { error: 'Identity required' };
+    }
+
+    const parsed = resynthesizeSchema.safeParse(request.body);
+    if (!parsed.success) {
+      reply.status(400);
+      return { error: 'Invalid request', details: parsed.error.issues };
+    }
+
+    const synthesizer = getVoiceBlockSynthesizer();
+    if (!synthesizer) {
+      reply.status(503);
+      return { error: 'Voice synthesizer not initialized' };
+    }
+
+    try {
+      const result = await synthesizer.resynthesize(parsed.data.text, parsed.data.catId);
+      return { audioUrl: result.audioUrl, durationSec: result.durationSec };
+    } catch (err) {
+      request.log.error({ err }, 'TTS resynthesize failed');
+      reply.status(502);
+      return { error: 'TTS resynthesize failed', detail: err instanceof Error ? err.message : 'unknown' };
+    }
   });
 
   /**

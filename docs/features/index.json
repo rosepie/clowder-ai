@@ -405,7 +405,7 @@
     {
       "id": "F066",
       "name": "Voice Pipeline Upgrade — 本地 TTS + 流式合成 + 播放队列",
-      "status": "phase4-done | **Owner**: Ragdoll (Opus 4.6)",
+      "status": "done | **Owner**: Ragdoll (Opus 4.6)",
       "file": "F066-voice-pipeline-upgrade.md"
     },
     {
@@ -667,5 +667,5 @@
       "file": "F108-side-dispatch-concurrent-invocation.md"
     }
   ],
-  "generated_at": "2026-03-13T01:39:24.314Z"
+  "generated_at": "2026-03-13T01:59:44.487Z"
 }

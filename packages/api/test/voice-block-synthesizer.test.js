@@ -754,7 +754,7 @@ describe('VoiceBlockSynthesizer — F066 Phase 4: real fetch error shape (cause 
     assert.ok(result[0].bodyMarkdown.includes('连接被拒绝'), 'correctly classified via cause unwrapping');
   });
 
-  it('retries on TypeError("fetch failed") with cause.code=ETIMEDOUT', async () => {
+  it('classifies TypeError("fetch failed") with cause.code=ETIMEDOUT as timeout and retries', async () => {
     let callCount = 0;
     const registry = makeMockRegistry({
       synthesize: async () => {
@@ -780,5 +780,117 @@ describe('VoiceBlockSynthesizer — F066 Phase 4: real fetch error shape (cause 
 
     assert.equal(result[0].kind, 'audio', 'succeeded after retry');
     assert.equal(callCount, 2, 'retried once');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// F066 Phase 4 AC-10: Resynthesize action in degraded card + public method
+// ---------------------------------------------------------------------------
+
+describe('VoiceBlockSynthesizer — F066 Phase 4 AC-10: resynthesize', () => {
+  it('degraded card includes tts-resynthesize action with text and catId', async () => {
+    const registry = makeMockRegistry({
+      synthesize: async () => {
+        throw new Error('TTS unavailable');
+      },
+    });
+    cleanTmpDir('vbs-test-resynth-action');
+    const cacheDir = path.join(os.tmpdir(), 'vbs-test-resynth-action');
+    const synthesizer = new VoiceBlockSynthesizer(registry, cacheDir);
+
+    const block = { id: 'a1', kind: 'audio', v: 1, text: '需要重新合成的文本' };
+    const result = await synthesizer.resolveVoiceBlocks([block], 'opus');
+
+    assert.equal(result[0].kind, 'card', 'degraded to card');
+    assert.ok(Array.isArray(result[0].actions), 'card has actions array');
+    assert.equal(result[0].actions.length, 1, 'exactly one action');
+    assert.equal(result[0].actions[0].label, '重新合成', 'action label');
+    assert.equal(result[0].actions[0].action, 'tts-resynthesize', 'action type');
+    assert.equal(result[0].actions[0].payload.text, '需要重新合成的文本', 'payload has text');
+    assert.equal(result[0].actions[0].payload.catId, 'opus', 'payload has catId');
+  });
+
+  it('degraded card uses speaker override in resynthesize action payload (F085-P3)', async () => {
+    const registry = makeMockRegistry({
+      synthesize: async () => {
+        throw new Error('TTS unavailable');
+      },
+    });
+    cleanTmpDir('vbs-test-resynth-speaker');
+    const cacheDir = path.join(os.tmpdir(), 'vbs-test-resynth-speaker');
+    const synthesizer = new VoiceBlockSynthesizer(registry, cacheDir);
+
+    const block = { id: 'a2', kind: 'audio', v: 1, text: 'speaker override', speaker: 'gemini' };
+    const result = await synthesizer.resolveVoiceBlocks([block], 'opus');
+
+    assert.equal(result[0].kind, 'card', 'degraded to card');
+    assert.equal(result[0].actions[0].payload.catId, 'gemini', 'uses speaker, not sender catId');
+  });
+
+  it('resynthesize() public method synthesizes audio successfully', async () => {
+    let synthesizeCalls = 0;
+    const registry = makeMockRegistry({
+      synthesize: async () => {
+        synthesizeCalls++;
+        return {
+          audio: Buffer.from('resynthesized-audio'),
+          format: 'wav',
+          metadata: { provider: 'mock', model: 'test', voice: 'test' },
+        };
+      },
+    });
+    cleanTmpDir('vbs-test-resynth-method');
+    const cacheDir = path.join(os.tmpdir(), 'vbs-test-resynth-method');
+    const synthesizer = new VoiceBlockSynthesizer(registry, cacheDir);
+
+    const result = await synthesizer.resynthesize('重新合成', 'opus');
+
+    assert.ok(result.audioUrl.startsWith('/api/tts/audio/'), 'returns valid audioUrl');
+    assert.ok(result.audioUrl.endsWith('.wav'), 'wav format');
+    assert.equal(synthesizeCalls, 1, 'called synthesize once');
+  });
+
+  it('resynthesize() retries on transient error', async () => {
+    let callCount = 0;
+    const registry = makeMockRegistry({
+      synthesize: async () => {
+        callCount++;
+        if (callCount === 1) {
+          const err = new Error('connect ECONNREFUSED');
+          err.code = 'ECONNREFUSED';
+          throw err;
+        }
+        return {
+          audio: Buffer.from('retry-ok'),
+          format: 'wav',
+          metadata: { provider: 'mock', model: 'test', voice: 'test' },
+        };
+      },
+    });
+    cleanTmpDir('vbs-test-resynth-retry');
+    const cacheDir = path.join(os.tmpdir(), 'vbs-test-resynth-retry');
+    const synthesizer = new VoiceBlockSynthesizer(registry, cacheDir);
+
+    const result = await synthesizer.resynthesize('retry test', 'opus');
+
+    assert.ok(result.audioUrl.startsWith('/api/tts/audio/'), 'succeeded after retry');
+    assert.equal(callCount, 2, 'retried once');
+  });
+
+  it('resynthesize() throws on non-retryable error', async () => {
+    const registry = makeMockRegistry({
+      synthesize: async () => {
+        throw new Error('TTS server returned 400: Bad Request');
+      },
+    });
+    cleanTmpDir('vbs-test-resynth-throws');
+    const cacheDir = path.join(os.tmpdir(), 'vbs-test-resynth-throws');
+    const synthesizer = new VoiceBlockSynthesizer(registry, cacheDir);
+
+    await assert.rejects(
+      () => synthesizer.resynthesize('will fail', 'opus'),
+      { message: 'TTS server returned 400: Bad Request' },
+      'throws on non-retryable error',
+    );
   });
 });

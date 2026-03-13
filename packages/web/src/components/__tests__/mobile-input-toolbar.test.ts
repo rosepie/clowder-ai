@@ -32,7 +32,6 @@ describe('MobileInputToolbar', () => {
     const defaults = {
       onAttach: vi.fn(),
       onWhisperToggle: vi.fn(),
-      onModeClick: vi.fn(),
       onClose: vi.fn(),
       ...props,
     };
@@ -42,13 +41,12 @@ describe('MobileInputToolbar', () => {
     return defaults;
   }
 
-  it('renders three action buttons', () => {
+  it('renders two action buttons', () => {
     render();
     const buttons = container.querySelectorAll('button');
-    expect(buttons.length).toBe(3);
+    expect(buttons.length).toBe(2);
     expect(container.textContent).toContain('附件');
     expect(container.textContent).toContain('悄悄话');
-    expect(container.textContent).toContain('模式');
   });
 
   it('calls onAttach + onClose when attach button is clicked', () => {
@@ -71,24 +69,11 @@ describe('MobileInputToolbar', () => {
     expect(fns.onClose).toHaveBeenCalledTimes(1);
   });
 
-  it('calls onModeClick + onClose when mode button is clicked', () => {
-    const fns = render();
-    const modeBtn = Array.from(container.querySelectorAll('button')).find((b) => b.textContent?.includes('模式'));
-    act(() => {
-      modeBtn?.click();
-    });
-    expect(fns.onModeClick).toHaveBeenCalledTimes(1);
-    expect(fns.onClose).toHaveBeenCalledTimes(1);
-  });
-
   it('disables buttons when disabled prop is set', () => {
     render({ disabled: true });
     const buttons = container.querySelectorAll('button');
-    // whisper and mode should be disabled (attach also disabled via sendDisabled)
     const whisperBtn = Array.from(buttons).find((b) => b.textContent?.includes('悄悄话'));
-    const modeBtn = Array.from(buttons).find((b) => b.textContent?.includes('模式'));
     expect(whisperBtn?.disabled).toBe(true);
-    expect(modeBtn?.disabled).toBe(true);
   });
 
   it('applies whisper-active styling when whisperMode is true', () => {

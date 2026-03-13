@@ -71,12 +71,9 @@ export class MemoryGovernanceStore implements IMemoryGovernanceStore {
   private readonly entries = new Map<string, GovernanceEntry>();
 
   create(entryId: string, actor: string, anchors?: string[]): GovernanceEntry {
-    if (this.entries.has(entryId)) {
-      throw new GovernanceConflictError(
-        `Entry ${entryId} already exists`,
-        this.entries.get(entryId)?.status,
-        'submit_review',
-      );
+    const existing = this.entries.get(entryId);
+    if (existing) {
+      throw new GovernanceConflictError(`Entry ${entryId} already exists`, existing.status, 'submit_review');
     }
 
     const entry: GovernanceEntry = {

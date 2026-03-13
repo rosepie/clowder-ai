@@ -64,6 +64,13 @@ export interface ToolEvent {
 /** F22: Rich block types for frontend rendering */
 export type RichBlockKind = 'card' | 'diff' | 'checklist' | 'media_gallery' | 'audio' | 'interactive';
 
+/** F066 Phase 4: Card action button */
+export interface CardAction {
+  label: string;
+  action: string;
+  payload?: Record<string, unknown>;
+}
+
 export interface RichCardBlock {
   id: string;
   kind: 'card';
@@ -72,6 +79,8 @@ export interface RichCardBlock {
   bodyMarkdown?: string;
   tone?: 'info' | 'success' | 'warning' | 'danger';
   fields?: Array<{ label: string; value: string }>;
+  /** F066 Phase 4: Optional action buttons */
+  actions?: CardAction[];
 }
 
 export interface RichDiffBlock {

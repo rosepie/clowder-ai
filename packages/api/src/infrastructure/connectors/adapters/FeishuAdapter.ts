@@ -57,6 +57,7 @@ export interface FeishuAdapterOptions {
 export class FeishuAdapter implements IStreamableOutboundAdapter {
   readonly connectorId = 'feishu';
   private readonly client: lark.Client;
+  private readonly log: FastifyBaseLogger;
   private readonly verificationToken: string | null;
   private tokenManager: FeishuTokenManager | null = null;
   private uploadFetchFn: typeof fetch = globalThis.fetch;

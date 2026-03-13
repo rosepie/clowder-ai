@@ -118,14 +118,19 @@ export class SqliteEvidenceStore implements IEvidenceStore {
 
   async upsert(items: EvidenceItem[]): Promise<void> {
     this.ensureOpen();
-    const stmt = this.db?.prepare(`
-			INSERT OR REPLACE INTO evidence_docs
-			(anchor, kind, status, title, summary, keywords, source_path, source_hash,
-			 superseded_by, materialized_from, updated_at)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-		`);
+    const db = this.db;
+    if (!db) {
+      throw new Error('Evidence store is closed');
+    }
 
-    const tx = this.db?.transaction((items: EvidenceItem[]) => {
+    const stmt = db.prepare(`
+				INSERT OR REPLACE INTO evidence_docs
+				(anchor, kind, status, title, summary, keywords, source_path, source_hash,
+				 superseded_by, materialized_from, updated_at)
+				VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+			`);
+
+    const tx = db.transaction((items: EvidenceItem[]) => {
       for (const item of items) {
         stmt.run(
           item.anchor,
@@ -142,6 +147,7 @@ export class SqliteEvidenceStore implements IEvidenceStore {
         );
       }
     });
+
     tx(items);
   }
 

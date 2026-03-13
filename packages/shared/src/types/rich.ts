@@ -21,12 +21,23 @@ export interface RichBlockBase {
 
 // ── Concrete Blocks ─────────────────────────────────────────
 
+/** F066 Phase 4: Card action button (e.g. "重新合成" on TTS failure cards) */
+export interface CardAction {
+  label: string;
+  /** Action identifier — frontend dispatches based on this */
+  action: string;
+  /** Opaque payload for the action handler */
+  payload?: Record<string, unknown>;
+}
+
 export interface RichCardBlock extends RichBlockBase {
   kind: 'card';
   title: string;
   bodyMarkdown?: string;
   tone?: 'info' | 'success' | 'warning' | 'danger';
   fields?: Array<{ label: string; value: string }>;
+  /** F066 Phase 4: Optional action buttons displayed at the bottom of the card */
+  actions?: CardAction[];
 }
 
 export interface RichDiffBlock extends RichBlockBase {

@@ -28,7 +28,6 @@ created: 2026-02-26
 | F056 | Cat Café 设计语言 — 猫猫化不是猫化 | spec | 三猫 | [F056](features/F056-cat-cafe-design-language.md) |
 | F059 | Cat Café 开源计划 — 3/30 目标 | in-progress | Ragdoll | [F059](features/F059-open-source-plan.md) |
 | F061 | Antigravity 接入 — 孟加拉猫（混血家族） | phase-1-done | Ragdoll | [F061](features/F061-antigravity-bengal-cat.md) |
-| F066 | Voice Pipeline Upgrade — Phase 4: TTS 韧性增强 | in-progress | Ragdoll | [F066](features/F066-voice-pipeline-upgrade.md) |
 | F067 | Cold-start Verifier — 无历史污染的交付物验证 | spec | Ragdoll | [F067](features/F067-cold-start-verifier.md) |
 | F068 | 新建对话弹窗 UX 优化 | in-progress | 三猫 | [F068](features/F068-new-thread-dialog-ux.md) |
 | F069 | Thread Read State — 未读 Badge 后端真相源 | spec | Ragdoll | [F069](features/F069-thread-read-state.md) |

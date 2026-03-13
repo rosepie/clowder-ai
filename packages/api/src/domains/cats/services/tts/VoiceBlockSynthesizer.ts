@@ -107,9 +107,10 @@ export class VoiceBlockSynthesizer {
         continue;
       }
 
+      // F085-P3: per-block speaker override for multi-cat voice
+      const voiceCatId = 'speaker' in block && typeof block.speaker === 'string' ? block.speaker : catId;
+
       try {
-        // F085-P3: per-block speaker override for multi-cat voice
-        const voiceCatId = 'speaker' in block && typeof block.speaker === 'string' ? block.speaker : catId;
         const result = await this.synthesizeWithRetry(text, voiceCatId);
         resolved.push({
           ...block,
@@ -128,11 +129,26 @@ export class VoiceBlockSynthesizer {
           title: '🔇 语音合成失败',
           bodyMarkdown: `${text}\n\n---\n⚠️ 错误类型：${errorCategory}`,
           tone: 'warning' as const,
+          actions: [
+            {
+              label: '重新合成',
+              action: 'tts-resynthesize',
+              payload: { text, catId: voiceCatId },
+            },
+          ],
         });
       }
     }
 
     return resolved;
+  }
+
+  /**
+   * F066 Phase 4: Public method for resynthesize endpoint.
+   * Re-attempts TTS synthesis with retry for a given text + catId.
+   */
+  async resynthesize(text: string, catId: string): Promise<{ audioUrl: string; durationSec?: number }> {
+    return this.synthesizeWithRetry(text, catId);
   }
 
   /**

@@ -261,18 +261,22 @@ export const messagesRoutes: FastifyPluginAsync<MessagesRoutesOptions> = async (
         storedUserMessageId = userMessage.id;
 
         // ③ Backfill / append messageId — distinguish enqueued vs merged
-        if (enqueueResult.outcome === 'enqueued') {
-          opts.invocationQueue.backfillMessageId(resolvedThreadId, userId, enqueueResult.entry?.id, userMessage.id);
-        } else {
-          opts.invocationQueue.appendMergedMessageId(resolvedThreadId, userId, enqueueResult.entry?.id, userMessage.id);
+        const queueEntryId = enqueueResult.entry?.id;
+        if (queueEntryId) {
+          if (enqueueResult.outcome === 'enqueued') {
+            opts.invocationQueue.backfillMessageId(resolvedThreadId, userId, queueEntryId, userMessage.id);
+          } else {
+            opts.invocationQueue.appendMergedMessageId(resolvedThreadId, userId, queueEntryId, userMessage.id);
+          }
         }
       } catch (err) {
         // Write failed → rollback queue entry (no ghost data)
-        if (enqueueResult.outcome === 'enqueued') {
+        const queueEntryId = enqueueResult.entry?.id;
+        if (queueEntryId && enqueueResult.outcome === 'enqueued') {
           // rollbackEnqueue: preserves merged content from concurrent requests
-          opts.invocationQueue.rollbackEnqueue(resolvedThreadId, userId, enqueueResult.entry?.id);
-        } else {
-          opts.invocationQueue.rollbackMerge(resolvedThreadId, userId, enqueueResult.entry?.id);
+          opts.invocationQueue.rollbackEnqueue(resolvedThreadId, userId, queueEntryId);
+        } else if (queueEntryId) {
+          opts.invocationQueue.rollbackMerge(resolvedThreadId, userId, queueEntryId);
         }
         throw err;
       }
@@ -422,7 +426,7 @@ export const messagesRoutes: FastifyPluginAsync<MessagesRoutesOptions> = async (
               ...(controller?.signal ? { signal: controller.signal } : {}),
               ...(opts.invocationQueue
                 ? {
-                    queueHasQueuedMessages: (tid: string) => opts.invocationQueue?.hasQueuedForThread(tid),
+                    queueHasQueuedMessages: (tid: string) => opts.invocationQueue?.hasQueuedForThread(tid) ?? false,
                   }
                 : {}),
               cursorBoundaries,
@@ -778,7 +782,7 @@ export const messagesRoutes: FastifyPluginAsync<MessagesRoutesOptions> = async (
     // Pagination (before cursor): include summaries >= oldest message AND < beforeTs.
     if (opts.summaryStore) {
       const summaries = await opts.summaryStore.listByThread(resolvedThreadId);
-      const minTs = page.length > 0 ? page[0]?.timestamp : null;
+      const minTs = page.length > 0 ? (page[0]?.timestamp ?? null) : null;
       for (const s of summaries) {
         if (minTs !== null && s.createdAt < minTs) continue;
         if (beforeTs != null && s.createdAt >= beforeTs) continue;

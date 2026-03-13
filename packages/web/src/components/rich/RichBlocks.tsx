@@ -12,7 +12,7 @@ import { MediaGalleryBlock } from './MediaGalleryBlock';
 function RichBlockRenderer({ block, catId, messageId }: { block: RichBlock; catId?: string; messageId?: string }) {
   switch (block.kind) {
     case 'card':
-      return <CardBlock block={block} />;
+      return <CardBlock block={block} messageId={messageId} />;
     case 'diff':
       return <DiffBlock block={block} />;
     case 'checklist':

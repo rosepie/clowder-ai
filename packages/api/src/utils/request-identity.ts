@@ -29,7 +29,7 @@ export function resolveUserId(request: FastifyRequest, options?: ResolveUserIdOp
   if (fromHeader) return fromHeader;
 
   const query = request.query as Record<string, unknown>;
-  const fromQuery = nonEmptyString(query.userId);
+  const fromQuery = nonEmptyString(query['userId']);
   if (fromQuery) return fromQuery;
 
   const fromFallback = nonEmptyString(options?.fallbackUserId);

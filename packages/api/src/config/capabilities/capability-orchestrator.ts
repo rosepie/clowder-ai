@@ -285,22 +285,26 @@ export function resolveServersForCat(config: CapabilitiesConfig, catId: string):
   return config.capabilities
     .filter((cap) => cap.type === 'mcp' && cap.mcpServer)
     .map((cap) => {
+      const mcpServer = cap.mcpServer;
+      if (!mcpServer) {
+        throw new Error(`MCP capability ${cap.id} is missing mcpServer configuration`);
+      }
       // Resolve effective enabled: global + per-cat override
       const override = cap.overrides?.find((o) => o.catId === catId);
       const enabledFromConfig = override ? override.enabled : cap.enabled;
       // Guardrail: commandless MCP entries are invalid for current stdio model.
       // Keep descriptor for writer cleanup (disabled => remove in Gemini/Claude).
-      const enabled = enabledFromConfig && hasUsableStdioCommand(cap.mcpServer?.command);
+      const enabled = enabledFromConfig && hasUsableStdioCommand(mcpServer.command);
 
       const desc: McpServerDescriptor = {
         name: cap.id,
-        command: cap.mcpServer?.command,
-        args: cap.mcpServer?.args,
+        command: mcpServer.command,
+        args: mcpServer.args,
         enabled,
         source: cap.source,
       };
-      if (cap.mcpServer?.env) desc.env = cap.mcpServer?.env;
-      if (cap.mcpServer?.workingDir) desc.workingDir = cap.mcpServer?.workingDir;
+      if (mcpServer.env) desc.env = mcpServer.env;
+      if (mcpServer.workingDir) desc.workingDir = mcpServer.workingDir;
       return desc;
     });
 }

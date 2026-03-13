@@ -58,7 +58,7 @@ describe('ChatInput mobile toolbar', () => {
     expect(plusBtn?.className).toContain('md:hidden');
   });
 
-  it('expands toolbar on + click and shows attach/whisper/mode buttons', () => {
+  it('expands toolbar on + click and shows attach/whisper buttons', () => {
     render();
     const plusBtn = container.querySelector('button[aria-label="展开工具栏"]') as HTMLButtonElement;
     act(() => {
@@ -67,7 +67,6 @@ describe('ChatInput mobile toolbar', () => {
     // MobileInputToolbar should now be visible
     expect(container.textContent).toContain('附件');
     expect(container.textContent).toContain('悄悄话');
-    expect(container.textContent).toContain('模式');
   });
 
   it('collapses toolbar when + is clicked again (rotate-45 toggle)', () => {

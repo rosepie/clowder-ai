@@ -49,7 +49,7 @@ export function DirectoryPickerModal({
   // 'lobby' sentinel means user explicitly chose "大厅 (无项目)"
   const [selectedPath, setSelectedPath] = useState<string | 'lobby' | null>(null);
   // P2 fix: clear stale pathError whenever user selects a project
-  const _handleSelectPath = useCallback((path: string | 'lobby') => {
+  const handleSelectPath = useCallback((path: string | 'lobby') => {
     setPathError(null);
     setSelectedPath(path);
   }, []);
@@ -118,13 +118,13 @@ export function DirectoryPickerModal({
         return;
       }
       const data = await res.json();
-      setSelectedPath(data.path);
+      handleSelectPath(data.path);
     } catch {
       setPathError('无法连接到服务器');
     } finally {
       setIsPicking(false);
     }
-  }, []);
+  }, [handleSelectPath]);
 
   // F068: Submit path from text input — validate via browse endpoint before accepting
   const handlePathSubmit = useCallback(async () => {
@@ -140,11 +140,11 @@ export function DirectoryPickerModal({
       }
       // Valid directory — select the canonicalized path
       const data = await res.json();
-      setSelectedPath(data.current);
+      handleSelectPath(data.current);
     } catch {
       setPathError('无法连接到服务器');
     }
-  }, [pathInput]);
+  }, [pathInput, handleSelectPath]);
 
   // Fetch cwd for "推荐" badge
   useEffect(() => {
@@ -221,7 +221,7 @@ export function DirectoryPickerModal({
           {cwdPath && !existingProjects.includes(cwdPath) && (
             <button
               type="button"
-              onClick={() => setSelectedPath(cwdPath)}
+              onClick={() => handleSelectPath(cwdPath)}
               className={`w-full text-left px-3 py-2.5 text-sm text-gray-700 hover:bg-owner-bg rounded-lg transition-colors flex items-center gap-2 ${selectedPath === cwdPath ? 'ring-2 ring-owner-primary bg-owner-bg' : 'ring-1 ring-owner-primary/30 bg-owner-bg/50'}`}
               title={cwdPath}
             >
@@ -238,7 +238,7 @@ export function DirectoryPickerModal({
             <button
               type="button"
               key={path}
-              onClick={() => setSelectedPath(path)}
+              onClick={() => handleSelectPath(path)}
               className={`w-full text-left px-3 py-2.5 text-sm text-gray-700 hover:bg-owner-bg rounded-lg transition-colors flex items-center gap-2 ${selectedPath === path ? 'ring-2 ring-owner-primary bg-owner-bg' : ''}`}
               title={path}
             >
@@ -252,7 +252,7 @@ export function DirectoryPickerModal({
 
           <button
             type="button"
-            onClick={() => setSelectedPath('lobby')}
+            onClick={() => handleSelectPath('lobby')}
             className={`w-full text-left px-3 py-2.5 text-sm text-gray-500 hover:bg-owner-bg rounded-lg transition-colors flex items-center gap-2 ${selectedPath === 'lobby' ? 'ring-2 ring-owner-primary bg-owner-bg' : ''}`}
           >
             <span className="text-base">🏠</span>
