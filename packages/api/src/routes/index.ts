@@ -1,5 +1,6 @@
 export { auditRoutes } from './audit.js';
 export { authorizationRoutes } from './authorization.js';
+export { availableClientsRoutes } from './available-clients.js';
 export { backlogRoutes } from './backlog.js';
 export { bootcampRoutes } from './bootcamp.js';
 export { brakeRoutes } from './brake.js';

@@ -241,6 +241,7 @@ export function AccountSection({
   modelOptions,
   availableProfiles,
   loadingProfiles,
+  availableClientIds,
   onChange,
 }: {
   form: HubCatEditorFormState;
@@ -248,11 +249,16 @@ export function AccountSection({
   modelOptions: string[];
   availableProfiles: ProfileItem[];
   loadingProfiles: boolean;
+  /** When provided, only these client IDs are shown in the Client dropdown. */
+  availableClientIds?: ReadonlySet<string>;
   onChange: (patch: FormPatch) => void;
 }) {
   const accountOptions = availableProfiles;
   const selectedProfile = availableProfiles.find((p) => p.id === form.accountRef);
   const callHint = buildCallHint(form.client, selectedProfile, form.defaultModel);
+  const filteredClientOptions = availableClientIds
+    ? CLIENT_OPTIONS.filter((opt) => availableClientIds.has(opt.value))
+    : CLIENT_OPTIONS;
 
   return (
     <SectionCard title="认证与模型" tone={hasError ? 'error' : 'neutral'}>
@@ -260,7 +266,7 @@ export function AccountSection({
         <SelectField
           label="Client"
           value={form.client}
-          options={CLIENT_OPTIONS}
+          options={filteredClientOptions}
           onChange={(value) => onChange({ client: value as HubCatEditorFormState['client'] })}
           required
         />

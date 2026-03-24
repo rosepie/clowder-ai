@@ -819,7 +819,7 @@
     {
       "id": "F134",
       "name": "Feishu Group Chat — 飞书群聊多用户支持",
-      "status": "design-gate-passed | **Owner**: 金渐层 | **Priority**: P1",
+      "status": "done (Phase A-C) | **Owner**: 金渐层 | **Priority**: P1 | **PR**: #697 merged `dc4ef024`",
       "file": "F134-feishu-group-chat.md"
     },
     {
@@ -841,5 +841,5 @@
       "file": "F137-weixin-personal-gateway.md"
     }
   ],
-  "generated_at": "2026-03-24T03:15:32.941Z"
+  "generated_at": "2026-03-24T09:01:54.892Z"
 }

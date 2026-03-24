@@ -52,6 +52,8 @@ interface OutboundDeliveryHookLike {
     catId?: string,
     richBlocks?: unknown[],
     threadMeta?: { threadShortId: string; threadTitle?: string; deepLinkUrl?: string },
+    origin?: string,
+    triggerMessageId?: string,
   ): Promise<void>;
 }
 

@@ -26,6 +26,17 @@ import type { ProfileItem } from '@/components/hub-provider-profiles.types';
 
 const mockApiFetch = vi.mocked(apiFetch);
 
+const ALL_CLIENTS_RESPONSE = {
+  clients: [
+    { id: 'anthropic', label: 'Claude', command: 'claude', available: true },
+    { id: 'openai', label: 'Codex', command: 'codex', available: true },
+    { id: 'google', label: 'Gemini', command: 'gemini', available: true },
+    { id: 'dare', label: 'Dare', command: 'dare', available: true },
+    { id: 'opencode', label: 'OpenCode', command: 'opencode', available: true },
+    { id: 'antigravity', label: 'Antigravity', command: 'antigravity', available: true },
+  ],
+};
+
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -262,6 +273,9 @@ describe('HubCatEditor', () => {
       if (path === '/api/cats') {
         return Promise.resolve(jsonResponse({ cat: { id: 'runtime-spark' } }, 201));
       }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
+      }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
 
@@ -329,6 +343,9 @@ describe('HubCatEditor', () => {
       if (path === '/api/cats' && init?.method === 'POST') {
         return Promise.resolve(jsonResponse({ cat: { id: 'runtime-opencode' } }, 201));
       }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
+      }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
 
@@ -365,42 +382,46 @@ describe('HubCatEditor', () => {
   });
 
   it('resets defaultModel when switching Provider to prevent stale model carry-over', async () => {
-    mockApiFetch.mockResolvedValue(
-      jsonResponse({
-        projectPath: '/tmp/project',
-        activeProfileId: null,
-        providers: [
-          {
-            id: 'claude',
-            provider: 'claude',
-            displayName: 'Claude (OAuth)',
-            name: 'Claude (OAuth)',
-            authType: 'oauth',
-            kind: 'builtin',
-            builtin: true,
-            client: 'anthropic',
-            models: ['claude-opus-4-6', 'claude-sonnet-4-5'],
-            hasApiKey: false,
-            createdAt: '',
-            updatedAt: '',
-          },
-          {
-            id: 'codex-sponsor',
-            provider: 'codex-sponsor',
-            displayName: 'Codex Sponsor',
-            name: 'Codex Sponsor',
-            authType: 'api_key',
-            kind: 'api_key',
-            builtin: false,
-            models: ['gpt-5.4-mini'],
-            hasApiKey: true,
-            baseUrl: 'https://proxy.example',
-            createdAt: '',
-            updatedAt: '',
-          },
-        ],
-      }),
-    );
+    const profilesPayload = {
+      projectPath: '/tmp/project',
+      activeProfileId: null,
+      providers: [
+        {
+          id: 'claude',
+          provider: 'claude',
+          displayName: 'Claude (OAuth)',
+          name: 'Claude (OAuth)',
+          authType: 'oauth',
+          kind: 'builtin',
+          builtin: true,
+          client: 'anthropic',
+          models: ['claude-opus-4-6', 'claude-sonnet-4-5'],
+          hasApiKey: false,
+          createdAt: '',
+          updatedAt: '',
+        },
+        {
+          id: 'codex-sponsor',
+          provider: 'codex-sponsor',
+          displayName: 'Codex Sponsor',
+          name: 'Codex Sponsor',
+          authType: 'api_key',
+          kind: 'api_key',
+          builtin: false,
+          models: ['gpt-5.4-mini'],
+          hasApiKey: true,
+          baseUrl: 'https://proxy.example',
+          createdAt: '',
+          updatedAt: '',
+        },
+      ],
+    };
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
+      }
+      return Promise.resolve(jsonResponse(profilesPayload));
+    });
 
     await act(async () => {
       root.render(
@@ -442,13 +463,18 @@ describe('HubCatEditor', () => {
   });
 
   it('switches to Antigravity branch and shows CLI command field', async () => {
-    mockApiFetch.mockResolvedValue(
-      jsonResponse({
-        projectPath: '/tmp/project',
-        activeProfileId: null,
-        providers: [],
-      }),
-    );
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
+      }
+      return Promise.resolve(
+        jsonResponse({
+          projectPath: '/tmp/project',
+          activeProfileId: null,
+          providers: [],
+        }),
+      );
+    });
 
     await act(async () => {
       root.render(React.createElement(HubCatEditor, { open: true, onClose: vi.fn(), onSaved: vi.fn() }));
@@ -499,6 +525,9 @@ describe('HubCatEditor', () => {
             ],
           }),
         );
+      }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
       }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
@@ -646,6 +675,9 @@ describe('HubCatEditor', () => {
       if (path === '/api/cats/runtime-codex' && init?.method === 'PATCH') {
         return Promise.resolve(jsonResponse({ cat: { id: 'runtime-codex' } }));
       }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
+      }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
 
@@ -734,6 +766,9 @@ describe('HubCatEditor', () => {
       if (path === '/api/cats/runtime-codex' && init?.method === 'PATCH') {
         return Promise.resolve(jsonResponse({ cat: { id: 'runtime-codex' } }));
       }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
+      }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
 
@@ -821,6 +856,9 @@ describe('HubCatEditor', () => {
       if (path === '/api/cats/runtime-opencode' && init?.method === 'PATCH') {
         return Promise.resolve(jsonResponse({ cat: { id: 'runtime-opencode' } }));
       }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
+      }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
 
@@ -877,6 +915,9 @@ describe('HubCatEditor', () => {
       }
       if (path === '/api/cats/runtime-opencode' && init?.method === 'PATCH') {
         return Promise.resolve(jsonResponse({ cat: { id: 'runtime-opencode' } }));
+      }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
       }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
@@ -994,6 +1035,9 @@ describe('HubCatEditor', () => {
       if (path === '/api/cats/runtime-codex' && init?.method === 'PATCH') {
         return Promise.resolve(jsonResponse({ cat: { id: 'runtime-codex' } }));
       }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
+      }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
 
@@ -1070,6 +1114,9 @@ describe('HubCatEditor', () => {
       }
       if (path === '/api/cats/runtime-codex' && init?.method === 'PATCH') {
         return Promise.resolve(jsonResponse({ cat: { id: 'runtime-codex' } }));
+      }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
       }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
@@ -1158,6 +1205,9 @@ describe('HubCatEditor', () => {
       if (path === '/api/cats/runtime-codex' && init?.method === 'PATCH') {
         return Promise.resolve(jsonResponse({ cat: { id: 'runtime-codex' } }));
       }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
+      }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
 
@@ -1218,6 +1268,9 @@ describe('HubCatEditor', () => {
       if (path === '/api/cats') {
         return Promise.resolve(jsonResponse({ cat: { id: 'runtime-spark' } }, 201));
       }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
+      }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
 
@@ -1274,6 +1327,9 @@ describe('HubCatEditor', () => {
       if (path === '/api/cats/runtime-antigravity') {
         return Promise.resolve(jsonResponse({ deleted: true }));
       }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
+      }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
 
@@ -1312,13 +1368,18 @@ describe('HubCatEditor', () => {
 
   it('prompts before closing when there are unsaved edits', async () => {
     const onClose = vi.fn();
-    mockApiFetch.mockResolvedValue(
-      jsonResponse({
-        projectPath: '/tmp/project',
-        activeProfileId: null,
-        providers: [],
-      }),
-    );
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
+      }
+      return Promise.resolve(
+        jsonResponse({
+          projectPath: '/tmp/project',
+          activeProfileId: null,
+          providers: [],
+        }),
+      );
+    });
 
     mockConfirm.mockResolvedValue(false);
     await act(async () => {
@@ -1373,6 +1434,9 @@ describe('HubCatEditor', () => {
       }
       if (path === '/api/config' && !init?.method) {
         return Promise.resolve(jsonResponse({ config: { cli: {}, codexExecution: {} } }));
+      }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
       }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
@@ -1520,6 +1584,9 @@ describe('HubCatEditor', () => {
             source: 'runtime_override',
           }),
         );
+      }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
       }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
@@ -1689,6 +1756,9 @@ describe('HubCatEditor', () => {
       if (path === '/api/config/session-strategy/codex' && init?.method === 'PATCH') {
         return Promise.resolve(jsonResponse({ ok: true }));
       }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
+      }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
 
@@ -1766,6 +1836,9 @@ describe('HubCatEditor', () => {
       }
       if (path === '/api/config' && init?.method === 'PATCH') {
         return Promise.resolve(jsonResponse({ config: {} }));
+      }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
       }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
@@ -1886,6 +1959,9 @@ describe('HubCatEditor', () => {
       if (path === '/api/config' && init?.method === 'PATCH') {
         return Promise.resolve(jsonResponse({ error: 'Codex PATCH failed' }, 500));
       }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
+      }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
 
@@ -1961,6 +2037,9 @@ describe('HubCatEditor', () => {
       }
       if (path === '/api/config' && init?.method === 'PATCH') {
         return Promise.resolve(jsonResponse({ config: {} }));
+      }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
       }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
@@ -2063,6 +2142,9 @@ describe('HubCatEditor', () => {
       }
       if (path === '/api/config' && init?.method === 'PATCH') {
         return Promise.resolve(jsonResponse({ error: 'Codex PATCH failed' }, 500));
+      }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
       }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
@@ -2194,6 +2276,9 @@ describe('HubCatEditor', () => {
           return Promise.resolve(jsonResponse({ error: 'Second Codex PATCH failed' }, 500));
         }
         return Promise.resolve(jsonResponse({ config: {} }));
+      }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
       }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
@@ -2334,6 +2419,9 @@ describe('HubCatEditor', () => {
       }
       if (path === '/api/cats/codex' && init?.method === 'PATCH') {
         return Promise.reject(new Error('network dropped during cat save'));
+      }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse(ALL_CLIENTS_RESPONSE));
       }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });

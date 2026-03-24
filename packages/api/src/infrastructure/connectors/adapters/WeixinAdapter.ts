@@ -18,7 +18,9 @@ const ILINK_BASE_URL = 'https://ilinkai.weixin.qq.com';
 const GETUPDATES_TIMEOUT_MS = 35_000;
 const POLL_ERROR_BACKOFF_MS = 3_000;
 const POLL_MAX_BACKOFF_MS = 60_000;
-const WEIXIN_MAX_MESSAGE_LENGTH = 2000;
+const WEIXIN_MAX_MESSAGE_LENGTH = 400;
+/** Delay between sending multiple chunks to avoid iLink-side throttling (ms) */
+const WEIXIN_CHUNK_DELAY_MS = 300;
 /** errcode -14 means session expired — need re-login */
 const ERRCODE_SESSION_EXPIRED = -14;
 /** QR code status poll interval (ms) */
@@ -46,25 +48,76 @@ export interface WeixinAttachment {
   fileName?: string;
 }
 
+/**
+ * iLink getupdates response — aligned with @tencent-weixin/openclaw-weixin v1.0.2
+ * (GetUpdatesResp in src/api/types.ts).
+ */
 interface ILinkUpdate {
+  ret?: number;
   errcode?: number;
   errmsg?: string;
+  msgs?: ILinkWeixinMessage[];
   get_updates_buf?: string;
-  messages?: ILinkMessage[];
+  longpolling_timeout_ms?: number;
 }
 
-interface ILinkMessage {
-  msg_id?: string;
-  from_user_name?: { str?: string };
-  content?: { str?: string };
-  context_token?: string;
-  msg_type?: number;
-  /** Image/media fields */
-  img_buf?: { buffer?: string };
-  cdn_img_url?: string;
+/** MessageItem inside a WeixinMessage — matches openclaw-weixin MessageItem. */
+interface ILinkMessageItem {
+  type?: number; // 1=TEXT, 2=IMAGE, 3=VOICE, 4=FILE, 5=VIDEO
+  text_item?: { text?: string };
+  image_item?: {
+    media?: { encrypt_query_param?: string; aes_key?: string };
+    url?: string;
+    aeskey?: string;
+  };
+  voice_item?: {
+    media?: { encrypt_query_param?: string; aes_key?: string };
+    text?: string;
+  };
+  file_item?: {
+    media?: { encrypt_query_param?: string; aes_key?: string };
+    file_name?: string;
+  };
+  video_item?: {
+    media?: { encrypt_query_param?: string; aes_key?: string };
+  };
 }
+
+/**
+ * iLink WeixinMessage — aligned with @tencent-weixin/openclaw-weixin v1.0.2
+ * (WeixinMessage in src/api/types.ts).
+ */
+interface ILinkWeixinMessage {
+  message_id?: number;
+  from_user_id?: string;
+  to_user_id?: string;
+  context_token?: string;
+  message_type?: number; // 1=USER, 2=BOT
+  message_state?: number; // 0=NEW, 1=GENERATING, 2=FINISH
+  item_list?: ILinkMessageItem[];
+  create_time_ms?: number;
+  session_id?: string;
+  group_id?: string;
+}
+
+/** MessageItemType constants — mirrors openclaw-weixin. */
+const MessageItemType = {
+  TEXT: 1,
+  IMAGE: 2,
+  VOICE: 3,
+  FILE: 4,
+  VIDEO: 5,
+} as const;
+
+/** MessageState constants — mirrors openclaw-weixin. */
+const MessageState = {
+  NEW: 0,
+  GENERATING: 1,
+  FINISH: 2,
+} as const;
 
 interface ILinkSendResponse {
+  ret?: number;
   errcode?: number;
   errmsg?: string;
 }
@@ -152,20 +205,22 @@ export class WeixinAdapter implements IOutboundAdapter {
    * Returns parsed messages and updated cursor.
    */
   parseUpdates(raw: ILinkUpdate): { messages: WeixinInboundMessage[]; newCursor: string; sessionExpired: boolean } {
-    if (raw.errcode === ERRCODE_SESSION_EXPIRED) {
+    const errorCode = raw.errcode ?? raw.ret;
+
+    if (errorCode === ERRCODE_SESSION_EXPIRED) {
       return { messages: [], newCursor: this.getUpdatesBuf, sessionExpired: true };
     }
 
-    if (raw.errcode && raw.errcode !== 0) {
-      this.log.warn({ errcode: raw.errcode, errmsg: raw.errmsg }, '[WeixinAdapter] getupdates error');
+    if (errorCode && errorCode !== 0) {
+      this.log.warn({ ret: raw.ret, errcode: raw.errcode, errmsg: raw.errmsg }, '[WeixinAdapter] getupdates error');
       return { messages: [], newCursor: this.getUpdatesBuf, sessionExpired: false };
     }
 
     const newCursor = raw.get_updates_buf ?? this.getUpdatesBuf;
     const messages: WeixinInboundMessage[] = [];
 
-    if (raw.messages) {
-      for (const msg of raw.messages) {
+    if (raw.msgs) {
+      for (const msg of raw.msgs) {
         const parsed = this.parseMessage(msg);
         if (parsed) messages.push(parsed);
       }
@@ -175,20 +230,29 @@ export class WeixinAdapter implements IOutboundAdapter {
   }
 
   /**
-   * Parse a single iLink message into our standard format.
-   * msg_type 1 = text, 3 = image, 34 = voice, 49 = file/link
+   * Parse a single iLink WeixinMessage into our standard format.
+   * Uses item_list[].type to determine message kind (TEXT=1, IMAGE=2, VOICE=3, FILE=4, VIDEO=5).
    */
-  private parseMessage(msg: ILinkMessage): WeixinInboundMessage | null {
-    const senderId = msg.from_user_name?.str;
+  private parseMessage(msg: ILinkWeixinMessage): WeixinInboundMessage | null {
+    const senderId = msg.from_user_id;
     const contextToken = msg.context_token;
     if (!senderId || !contextToken) return null;
 
-    const msgId = msg.msg_id ?? `weixin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    const msgType = msg.msg_type ?? 1;
+    const msgId =
+      msg.message_id != null
+        ? String(msg.message_id)
+        : `weixin-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
 
-    // Text message (msg_type 1)
-    if (msgType === 1) {
-      const text = msg.content?.str;
+    const firstItem = msg.item_list?.[0];
+    if (!firstItem) {
+      this.log.debug({ messageId: msg.message_id }, '[WeixinAdapter] Message with empty item_list, skipping');
+      return null;
+    }
+
+    const itemType = firstItem.type ?? MessageItemType.TEXT;
+
+    if (itemType === MessageItemType.TEXT) {
+      const text = firstItem.text_item?.text;
       if (!text) return null;
       return {
         chatId: senderId,
@@ -199,9 +263,8 @@ export class WeixinAdapter implements IOutboundAdapter {
       };
     }
 
-    // Image message (msg_type 3) — Phase B, pass through as placeholder
-    if (msgType === 3) {
-      const imageUrl = msg.cdn_img_url ?? '';
+    if (itemType === MessageItemType.IMAGE) {
+      const imageUrl = firstItem.image_item?.url ?? '';
       return {
         chatId: senderId,
         text: '[图片]',
@@ -212,19 +275,28 @@ export class WeixinAdapter implements IOutboundAdapter {
       };
     }
 
-    // Voice message (msg_type 34)
-    if (msgType === 34) {
+    if (itemType === MessageItemType.VOICE) {
       return {
         chatId: senderId,
-        text: '[语音]',
+        text: firstItem.voice_item?.text || '[语音]',
         messageId: msgId,
         senderId,
         contextToken,
       };
     }
 
-    // Unsupported type — log and skip
-    this.log.debug({ msgType, msgId }, '[WeixinAdapter] Unsupported message type, skipping');
+    if (itemType === MessageItemType.FILE) {
+      return {
+        chatId: senderId,
+        text: `[文件] ${firstItem.file_item?.file_name ?? ''}`.trim(),
+        messageId: msgId,
+        senderId,
+        contextToken,
+        attachments: [{ type: 'file', mediaUrl: '', fileName: firstItem.file_item?.file_name }],
+      };
+    }
+
+    this.log.debug({ itemType, messageId: msg.message_id }, '[WeixinAdapter] Unsupported item type, skipping');
     return null;
   }
 
@@ -242,8 +314,8 @@ export class WeixinAdapter implements IOutboundAdapter {
         try {
           this.pollAbortController = new AbortController();
           const body: Record<string, unknown> = {
-            // Only include cursor if we have one
-            ...(this.getUpdatesBuf ? { get_updates_buf: this.getUpdatesBuf } : {}),
+            get_updates_buf: this.getUpdatesBuf || '',
+            base_info: { channel_version: '1.0.0' },
           };
 
           const res = await this.fetchFn(`${ILINK_BASE_URL}/ilink/bot/getupdates`, {
@@ -262,6 +334,10 @@ export class WeixinAdapter implements IOutboundAdapter {
 
           const raw = (await res.json()) as ILinkUpdate;
           const { messages, newCursor, sessionExpired } = this.parseUpdates(raw);
+
+          if (messages.length > 0) {
+            this.log.info({ count: messages.length }, '[WeixinAdapter] Received messages');
+          }
 
           if (sessionExpired) {
             this.log.error('[WeixinAdapter] Session expired (errcode -14). Bot token invalid — need re-login.');
@@ -316,13 +392,17 @@ export class WeixinAdapter implements IOutboundAdapter {
 
   // ── Outbound: Send reply ──
 
-  /**
-   * Send a text reply to a WeChat user.
-   * Requires a cached context_token for the target chatId.
-   * Auto-chunks messages exceeding 2000 characters.
-   */
   async sendReply(externalChatId: string, content: string): Promise<void> {
     const contextToken = this.contextTokens.get(externalChatId);
+    this.log.info(
+      {
+        chatId: externalChatId,
+        hasContextToken: !!contextToken,
+        contentLen: content.length,
+        cachedTokenCount: this.contextTokens.size,
+      },
+      '[WeixinAdapter] sendReply() called',
+    );
     if (!contextToken) {
       this.log.warn(
         { chatId: externalChatId },
@@ -331,10 +411,36 @@ export class WeixinAdapter implements IOutboundAdapter {
       return;
     }
 
-    const chunks = this.chunkMessage(content, WEIXIN_MAX_MESSAGE_LENGTH);
-    for (const chunk of chunks) {
-      await this.sendMessageApi(externalChatId, chunk, contextToken);
+    const plainContent = WeixinAdapter.stripMarkdownForWeixin(content);
+    const chunks = this.chunkMessage(plainContent, WEIXIN_MAX_MESSAGE_LENGTH);
+    for (let i = 0; i < chunks.length; i++) {
+      if (i > 0) await this.sleep(WEIXIN_CHUNK_DELAY_MS);
+      await this.sendMessageApi(externalChatId, chunks[i], contextToken);
     }
+    this.log.info(
+      { chatId: externalChatId, chunks: chunks.length, originalLen: content.length, plainLen: plainContent.length },
+      '[WeixinAdapter] sendReply() completed successfully',
+    );
+  }
+
+  static stripMarkdownForWeixin(text: string): string {
+    return text
+      .replace(/```[^\n]*\n([\s\S]*?)```/g, '$1') // multi-line fence → keep code body
+      .replace(/```(.+?)```/g, '$1') // single-line fence → keep content
+      .replace(/`([^`]+)`/g, '$1') // inline code → plain
+      .replace(/!\[([^\]]*)\]\([^)]+\)/g, '$1') // ![alt](url) → alt (must precede link regex)
+      .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1') // [text](url) → text
+      .replace(/^#{1,6}\s+/gm, '') // strip heading markers
+      .replace(/(\*\*|__)(.*?)\1/g, '$2') // bold → plain
+      .replace(/(?<!\w)\*(?=\S)(.*?\S)\*(?!\w)/gm, '$1') // italic *word* → plain (not inside identifiers)
+      .replace(/(?<!\w)_(?=\S)(.*?\S)_(?!\w)/gm, '$1') // italic _word_ → plain (not inside identifiers)
+      .replace(/~~(.*?)~~/g, '$1') // strikethrough → plain
+      .replace(/^[>\s]*>\s?/gm, '') // blockquote markers
+      .replace(/^[-*+]\s+/gm, '• ') // unordered list → bullet
+      .replace(/^\d+\.\s+/gm, '') // ordered list markers
+      .replace(/^---+$/gm, '') // horizontal rules
+      .replace(/\n{3,}/g, '\n\n') // collapse excessive newlines
+      .trim();
   }
 
   /**
@@ -342,12 +448,21 @@ export class WeixinAdapter implements IOutboundAdapter {
    */
   private async sendMessageApi(chatId: string, text: string, contextToken: string): Promise<void> {
     const body = {
-      context_token: contextToken,
-      to_user_name: chatId,
-      content: { str: text },
-      msg_type: 1,
-      message_state: 2,
+      msg: {
+        to_user_id: chatId,
+        context_token: contextToken,
+        message_state: MessageState.FINISH,
+        item_list: [
+          {
+            type: MessageItemType.TEXT,
+            text_item: { text },
+          },
+        ],
+      },
+      base_info: { channel_version: '1.0.0' },
     };
+
+    this.log.info({ chatId, textLen: text.length }, '[WeixinAdapter] sendMessageApi() calling iLink API');
 
     const res = await this.fetchFn(`${ILINK_BASE_URL}/ilink/bot/sendmessage`, {
       method: 'POST',
@@ -357,15 +472,21 @@ export class WeixinAdapter implements IOutboundAdapter {
 
     if (!res.ok) {
       const errorText = await res.text().catch(() => '');
+      this.log.error({ chatId, status: res.status, errorText }, '[WeixinAdapter] sendMessageApi() HTTP error');
       throw new Error(`sendmessage HTTP ${res.status}: ${errorText}`);
     }
 
     const data = (await res.json()) as ILinkSendResponse;
-    if (data.errcode && data.errcode !== 0) {
-      if (data.errcode === ERRCODE_SESSION_EXPIRED) {
+    const errorCode = data.errcode ?? data.ret;
+    this.log.info(
+      { chatId, errcode: errorCode, errmsg: data.errmsg },
+      '[WeixinAdapter] sendMessageApi() response received',
+    );
+    if (errorCode && errorCode !== 0) {
+      if (errorCode === ERRCODE_SESSION_EXPIRED) {
         this.log.error('[WeixinAdapter] Session expired during sendmessage (errcode -14)');
       }
-      throw new Error(`sendmessage errcode ${data.errcode}: ${data.errmsg ?? 'unknown'}`);
+      throw new Error(`sendmessage errcode ${errorCode}: ${data.errmsg ?? 'unknown'}`);
     }
   }
 

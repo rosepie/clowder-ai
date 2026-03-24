@@ -103,10 +103,41 @@ team lead确认已被灰度到 ClawBot（iLink Bot）功能。
 
 ### Phase C: IM Hub 配置向导 + 健壮性
 
-**IM Hub 集成**：
-- 扩展 IM Hub 配置向导 UI，添加微信个人号配置流程
-- QR 码展示 + 扫码状态实时反馈
-- Bot token 状态显示（已连接 / 已过期 / 未配置）
+**IM Hub QR 登录 UI**（team lead明确要求：*"能不能做到im hub内？我点击获取二维码 然后给我二维码 我点击扫码完成 然后挂上这个？"*）：
+
+扩展 `HubConnectorConfigTab.tsx`（现有 265 行，已有飞书/Telegram/钉钉配置）：
+
+1. **微信配置卡片**：在 connector config 列表中添加微信个人号条目
+   - 状态显示：未配置 → 扫码中 → 已连接（绿色）→ 已过期（红色）
+   - 使用现有 `packages/web/public/images/connectors/weixin.png` 图标
+   - 品牌色 `#07C160`（微信绿）
+
+2. **QR 码获取 + 展示流程**：
+   - 点击"获取二维码"按钮 → `POST /api/connector/weixin/qrcode`
+   - 在配置面板内展示 QR 码图片（qrUrl 直连）
+   - 底部显示"请用微信扫描二维码"提示
+
+3. **扫码状态轮询**：
+   - 自动轮询 `GET /api/connector/weixin/qrcode-status?qrPayload=<hex>` 
+   - 状态映射：`0` → 等待扫码 → `1` → 已扫码待确认 → `4` → 成功
+   - 超时处理：60s 无扫码自动过期，提示重新获取
+
+4. **扫码完成 → 激活**：
+   - 扫码成功后自动调用 `POST /api/connector/weixin/activate`
+   - 激活后卡片切换为"已连接"状态
+   - 显示连接时间和轮询状态
+
+5. **已有后端 API**（Phase A 已实现，无需改动）：
+   ```
+   POST /api/connector/weixin/qrcode      → { qrUrl, qrPayload }
+   GET  /api/connector/weixin/qrcode-status → { status }
+   POST /api/connector/weixin/activate     → { ok, polling }
+   GET  /api/connector/status              → { platforms: [...] }
+   ```
+
+6. **前端组件新增**：
+   - `HubConfigIcons.tsx`：添加 `PLATFORM_VISUALS.weixin` 条目
+   - QR 码模态/内联面板组件（复用现有 modal 模式）
 
 **健壮性**：
 - Session 过期检测（`errcode -14`）→ 自动提醒重新扫码
@@ -168,6 +199,80 @@ team lead确认已被灰度到 ClawBot（iLink Bot）功能。
 | 微信对 Bot 消息频率可能有限制 | 实现发送 rate limiter + 队列化 |
 | CDN 媒体 AES-128-ECB 加解密 | Node.js 原生 `crypto` 模块，参考 `epiral/weixin-bot` protocol spec |
 | 灰度取消或协议大改 | Phase A 文本双向先跑通验证，低投入高价值 |
+
+## Known Bugs
+
+### BUG-1: 出站消息无法投递到微信（P0）
+
+**状态**: 🟢 Fixed — PR #701 squash merge (40639bd4)
+
+**现象**（2026-07-24 Alpha 实测，3 次复现）：
+- ✅ 微信扫码登录成功 → 长轮询启动
+- ✅ 微信发消息 → iLink `getupdates` 正常接收 → ConnectorRouter 路由 → 创建 thread + binding → 猫猫 invocation 创建 → 猫猫处理完成
+- ❌ 猫猫回复 **从未** 到达微信端 — 微信 DM 窗口无任何新消息
+
+**证据链**（来自 `api.2026-03-23.1.log`, PID 72430）：
+
+| 时间 (UTC) | 事件 | 日志行 | 状态 |
+|---|---|---|---|
+| 04:56:00 | QR confirmed, long polling started | ~189200 | ✅ |
+| 05:04:04 | 第 1 条微信消息接收 | 189711 | ✅ |
+| 05:04:04 | Thread `mn45go5om80e4v98` created + binding created | 189711 | ✅ |
+| 05:04:04 | Invocation `c4e8b8bd` created (opus) | 189711 | ✅ |
+| 05:04:43 | Invocation `ecad1262` completed | 189916 | ✅ |
+| — | **deliver() 应该被调用 → 日志中完全无出站记录** | — | ❌ |
+| 05:09:14 | `/threads` 命令处理成功 | ~190100 | ✅ |
+| 05:10:28 | 第 3 条微信消息 → invocation `a07197a1` | 190598 | ✅ |
+| 05:10:41 | Invocation `82924130` completed | 190879 | ✅ |
+| — | **再次无出站记录** | — | ❌ |
+
+**Redis binding 已确认存在**：
+```
+cat-cafe:connector-binding:weixin:o9cq8008zWwzHxRSAQqEgo5Sz34g@im.wechat
+  connectorId: weixin
+  externalChatId: o9cq8008zWwzHxRSAQqEgo5Sz34g@im.wechat
+  threadId: thread_mn45go5om80e4v98
+  userId: default-user
+  createdAt: 1774328644432
+  hubThreadId: thread_mn45nbswl44j0aei
+```
+
+**关键发现 — 双 invocation ID**：
+- 系统创建: `c4e8b8bd`（行 189711）和 `a07197a1`（行 190598）
+- 完成日志: `ecad1262`（行 189916）和 `82924130`（行 190879）
+- 这是**不同的 ID** — ConnectorInvokeTrigger 内部创建了自己的 invocation record
+
+**完全无出站日志**：
+- 无 `"Outbound delivery failed"` 错误
+- 无 `"No context_token cached"` 警告
+- 无 `"No adapter registered"` 警告
+- 无 iLink `sendmessage` HTTP 请求
+- `OutboundDeliveryHook.deliver()` 在 `bindings.length === 0` 时 **静默返回**（第 68 行无日志）
+- `WeixinAdapter.sendReply()` 在成功时 **无日志输出**
+
+**疑似根因（按可能性排序）**：
+
+1. **`OutboundDeliveryHook.deliver()` 查询到 0 个 binding**：
+   - `getByThread(threadId)` 返回空数组 → 静默 return
+   - 可能原因：Redis reverse index `connector-binding-rev:{threadId}` 的 Set 成员（unprefixed key）与 `hgetall` 的 ioredis `keyPrefix` 交互有误？
+   - 或者 `threadId` 在 outbound 路径中不一致（`hub_threadId` vs `threadId`）？
+
+2. **`ConnectorInvokeTrigger.opts.outboundHook` 为 undefined**：
+   - `setOutboundHook()` 在 `index.ts` 行 1283 调用
+   - 但如果 connector gateway bootstrap 在 invokeTrigger 初始化之前完成，可能存在时序问题
+
+3. **WeixinAdapter.sendReply() 或 sendMessageApi() HTTP 成功但 iLink 静默丢弃**：
+   - sendMessageApi 无成功日志，无法排除
+   - 但零日志更指向 deliver() 根本未被调用
+
+4. **context_token 竞态**：
+   - Token 在入站处理中缓存（Map 内存），但 deliver() 发生在不同异步上下文
+
+**修复前必做**：
+- 在 `OutboundDeliveryHook.deliver()` 第 68 行添加 `bindings.length === 0` 日志
+- 在 `WeixinAdapter.sendReply()` 添加成功日志
+- 在 `WeixinAdapter.sendMessageApi()` 添加响应体日志
+- 重新测试后根据日志定位确切根因
 
 ## Key Decisions
 

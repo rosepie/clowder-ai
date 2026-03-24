@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useAvailableClients } from '@/hooks/useAvailableClients';
 import type { CatData } from '@/hooks/useCatData';
 import { apiFetch } from '@/utils/api-client';
 import type { ConfigData } from './config-viewer-types';
@@ -38,6 +39,8 @@ interface HubCatEditorProps {
 
 export function HubCatEditor({ cat, draft, open, onClose, onSaved }: HubCatEditorProps) {
   const confirm = useConfirm();
+  const { clients: detectedClients } = useAvailableClients();
+  const availableClientIds = useMemo(() => new Set(detectedClients.map((c) => c.id)), [detectedClients]);
   const [profiles, setProfiles] = useState<ProfileItem[]>([]);
   const [loadingProfiles, setLoadingProfiles] = useState(false);
   const [loadingStrategy, setLoadingStrategy] = useState(false);
@@ -497,6 +500,7 @@ export function HubCatEditor({ cat, draft, open, onClose, onSaved }: HubCatEdito
             modelOptions={modelOptions}
             availableProfiles={availableProfiles}
             loadingProfiles={loadingProfiles}
+            availableClientIds={availableClientIds.size > 0 ? availableClientIds : undefined}
             onChange={patchForm}
           />
           <RoutingSection form={form} hasError={fieldErrors.routing} onChange={patchForm} />

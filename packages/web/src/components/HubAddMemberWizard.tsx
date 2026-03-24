@@ -1,11 +1,10 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
+import { useAvailableClients } from '@/hooks/useAvailableClients';
 import { apiFetch } from '@/utils/api-client';
 import {
   ChoiceButton,
-  CLIENT_ROW_1,
-  CLIENT_ROW_2,
   clientLabel,
   FALLBACK_ANTIGRAVITY_ARGS,
   FALLBACK_ANTIGRAVITY_MODELS,
@@ -26,6 +25,17 @@ interface HubAddMemberWizardProps {
 }
 
 export function HubAddMemberWizard({ open, onClose, onComplete }: HubAddMemberWizardProps) {
+  const { clients: detectedClients, loading: loadingClients } = useAvailableClients();
+  const clientIds = useMemo(() => new Set(detectedClients.map((c) => c.id)), [detectedClients]);
+  const clientRow1 = useMemo(
+    () => (['anthropic', 'openai', 'google'] as ClientValue[]).filter((id) => clientIds.has(id)),
+    [clientIds],
+  );
+  const clientRow2 = useMemo(
+    () => (['opencode', 'dare', 'antigravity'] as ClientValue[]).filter((id) => clientIds.has(id)),
+    [clientIds],
+  );
+
   const [profiles, setProfiles] = useState<ProfileItem[]>([]);
   const [seedCats, setSeedCats] = useState<
     Array<{ provider: string; source?: string; defaultModel?: string; commandArgs?: string[] }>
@@ -208,18 +218,28 @@ export function HubAddMemberWizard({ open, onClose, onComplete }: HubAddMemberWi
                 选择要接入的 CLI 工具、Agent 平台或 Antigravity bridge
               </p>
             </div>
-            {[CLIENT_ROW_1, CLIENT_ROW_2].map((row, index) => (
-              <div key={index} role="group" aria-label={`Client Row ${index + 1}`} className="flex flex-wrap gap-3">
-                {row.map((value) => (
-                  <PillChoiceButton
-                    key={value}
-                    label={clientLabel(value)}
-                    selected={client === value}
-                    onClick={() => handleClientSelect(value)}
-                  />
-                ))}
-              </div>
-            ))}
+            {loadingClients ? (
+              <p className="text-sm text-[#8A776B]">正在检测可用 Client...</p>
+            ) : clientRow1.length === 0 && clientRow2.length === 0 ? (
+              <p className="rounded-2xl border border-dashed border-[#E8DCCF] bg-white/80 px-4 py-3 text-sm text-[#8A776B]">
+                未检测到可用的 CLI Client。请先安装对应的 CLI 工具。
+              </p>
+            ) : (
+              [clientRow1, clientRow2]
+                .filter((row) => row.length > 0)
+                .map((row, index) => (
+                  <div key={index} role="group" aria-label={`Client Row ${index + 1}`} className="flex flex-wrap gap-3">
+                    {row.map((value) => (
+                      <PillChoiceButton
+                        key={value}
+                        label={clientLabel(value)}
+                        selected={client === value}
+                        onClick={() => handleClientSelect(value)}
+                      />
+                    ))}
+                  </div>
+                ))
+            )}
           </section>
 
           <section className="space-y-4 rounded-[20px] border border-[#F1E7DF] bg-[#FFFDFC] p-[18px]">

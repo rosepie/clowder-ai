@@ -39,6 +39,7 @@ export interface ConnectorGatewayConfig {
   feishuAppId?: string | undefined;
   feishuAppSecret?: string | undefined;
   feishuVerificationToken?: string | undefined;
+  feishuBotOpenId?: string | undefined;
   dingtalkAppKey?: string | undefined;
   dingtalkAppSecret?: string | undefined;
   weixinBotToken?: string | undefined;
@@ -59,6 +60,7 @@ export interface ConnectorGatewayDeps {
       mentions: CatId[];
       timestamp: number;
     }): Promise<{ id: string }>;
+    getById?(id: string): Promise<{ source?: ConnectorSource } | null>;
   };
   readonly threadStore: {
     create(userId: string, title?: string): { id: string } | Promise<{ id: string }>;
@@ -106,7 +108,14 @@ export interface ConnectorGatewayDeps {
     ): { tags: readonly string[] } | null | Promise<{ tags: readonly string[] } | null>;
   };
   readonly invokeTrigger: {
-    trigger(threadId: string, catId: CatId, userId: string, message: string, messageId: string): void;
+    trigger(
+      threadId: string,
+      catId: CatId,
+      userId: string,
+      message: string,
+      messageId: string,
+      ...args: unknown[]
+    ): void;
   };
   readonly socketManager?:
     | {
@@ -135,6 +144,7 @@ export function loadConnectorGatewayConfig(): ConnectorGatewayConfig {
     feishuAppId: process.env.FEISHU_APP_ID,
     feishuAppSecret: process.env.FEISHU_APP_SECRET,
     feishuVerificationToken: process.env.FEISHU_VERIFICATION_TOKEN,
+    feishuBotOpenId: process.env.FEISHU_BOT_OPEN_ID,
     dingtalkAppKey: process.env.DINGTALK_APP_KEY,
     dingtalkAppSecret: process.env.DINGTALK_APP_SECRET,
     weixinBotToken: process.env.WEIXIN_BOT_TOKEN,
@@ -243,6 +253,34 @@ export async function startConnectorGateway(
     feishu._injectTokenManager(feishuTokenManager);
     adapters.set('feishu', feishu);
 
+    // F134: Resolve bot open_id for @bot detection in group chats
+    const envBotOpenId = config.feishuBotOpenId;
+    if (envBotOpenId) {
+      feishu.setBotOpenId(envBotOpenId);
+      log.info({ botOpenId: envBotOpenId }, '[Feishu] Bot open_id set from config');
+    } else {
+      feishuTokenManager
+        .getTenantAccessToken()
+        .then(async (token) => {
+          try {
+            const res = await fetch('https://open.feishu.cn/open-apis/bot/v3/info', {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+              const data = (await res.json()) as { bot?: { open_id?: string } };
+              const openId = data?.bot?.open_id;
+              if (openId) {
+                feishu.setBotOpenId(openId);
+                log.info({ botOpenId: openId }, '[Feishu] Bot open_id resolved via API');
+              }
+            }
+          } catch (err) {
+            log.warn({ err }, '[Feishu] Failed to resolve bot open_id — group chat @bot detection disabled');
+          }
+        })
+        .catch(() => {});
+    }
+
     mediaService.setFeishuDownloadFn(async (fileKey: string, type: string, messageId?: string) => {
       const token = await feishuTokenManager.getTenantAccessToken();
       if (!messageId) throw new Error('Feishu download requires messageId');
@@ -320,7 +358,33 @@ export async function startConnectorGateway(
           ...(a.duration != null ? { duration: a.duration } : {}),
         }));
 
-        const result = await connectorRouter.route('feishu', parsed.chatId, parsed.text, parsed.messageId, attachments);
+        // F134: Enrich sender and chat info for group chats
+        let senderName = parsed.senderName;
+        let chatName = parsed.chatName;
+        if (parsed.chatType === 'group') {
+          if (!senderName) {
+            senderName = await feishu.resolveSenderName(parsed.senderId).catch(() => undefined);
+          }
+          if (!chatName) {
+            chatName = await feishu.resolveChatName(parsed.chatId).catch(() => undefined);
+          }
+        }
+        // F134 P1 fix: Only attach sender for group chats — DM replies must NOT @sender (AC-C2)
+        const sender =
+          parsed.chatType === 'group' && parsed.senderId !== 'unknown'
+            ? { id: parsed.senderId, ...(senderName ? { name: senderName } : {}) }
+            : undefined;
+
+        const result = await connectorRouter.route(
+          'feishu',
+          parsed.chatId,
+          parsed.text,
+          parsed.messageId,
+          attachments,
+          sender,
+          parsed.chatType,
+          chatName,
+        );
 
         if (result.kind === 'skipped') {
           return { kind: 'skipped', reason: result.reason };
@@ -408,11 +472,16 @@ export async function startConnectorGateway(
     return undefined;
   };
 
+  const messageLookup = deps.messageStore.getById
+    ? async (messageId: string) => deps.messageStore.getById!(messageId)
+    : undefined;
+
   const outboundHook = new OutboundDeliveryHook({
     bindingStore,
     adapters,
     log,
     mediaPathResolver,
+    messageLookup,
   });
 
   // Build streamable adapters map (only adapters with sendPlaceholder + editMessage)
