@@ -1,0 +1,75 @@
+name: Build Desktop Installer
+
+on:
+  push:
+    branches: [feat/desktop-installer]
+    paths:
+      - 'packages/desktop/**'
+      - 'cat-config.lite.json'
+      - '.github/workflows/desktop-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build Windows installer
+        # build script: compile all packages → prepare-bundle → electron-builder
+        run: pnpm --filter @cat-cafe/desktop run dist:win
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cat-cafe-windows-installer
+          path: |
+            packages/desktop/release/*.exe
+            packages/desktop/release/*.exe.blockmap
+          retention-days: 30
+
+  build-mac:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      - name: Build macOS installer
+        run: pnpm --filter @cat-cafe/desktop run dist
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cat-cafe-mac-installer
+          path: |
+            packages/desktop/release/*.dmg
+            packages/desktop/release/*.dmg.blockmap
+          retention-days: 30

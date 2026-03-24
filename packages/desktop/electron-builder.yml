@@ -6,52 +6,23 @@ directories:
   output: release
   buildResources: resources
 
+# Electron app files (main process + preload + setup page)
 files:
   - dist/**/*
   - resources/**/*
 
+# The app-bundle is created by scripts/prepare-bundle.sh using `pnpm deploy`
+# which resolves all pnpm symlinks into flat, self-contained directories
+# with native modules compiled for the CURRENT platform.
+#
+# IMPORTANT: You must build on the TARGET platform.
+#   macOS → .dmg    (build on macOS)
+#   Windows → .exe  (build on Windows or via GitHub Actions)
 extraResources:
-  # Bundle the entire built app as app-bundle
-  - from: ../../packages/api/dist
-    to: app-bundle/packages/api/dist
+  - from: app-bundle
+    to: app-bundle
     filter:
       - "**/*"
-  - from: ../../packages/api/node_modules
-    to: app-bundle/packages/api/node_modules
-    filter:
-      - "**/*"
-  - from: ../../packages/shared/dist
-    to: app-bundle/packages/shared/dist
-    filter:
-      - "**/*"
-  - from: ../../packages/shared/node_modules
-    to: app-bundle/packages/shared/node_modules
-    filter:
-      - "**/*"
-  - from: ../../packages/web/.next
-    to: app-bundle/packages/web/.next
-    filter:
-      - "**/*"
-  - from: ../../packages/web/public
-    to: app-bundle/packages/web/public
-    filter:
-      - "**/*"
-  - from: ../../packages/web/node_modules
-    to: app-bundle/packages/web/node_modules
-    filter:
-      - "**/*"
-  - from: ../../packages/web/next.config.js
-    to: app-bundle/packages/web/next.config.js
-  - from: ../../packages/web/package.json
-    to: app-bundle/packages/web/package.json
-  - from: ../../cat-config.lite.json
-    to: app-bundle/cat-config.lite.json
-  - from: ../../packages/api/package.json
-    to: app-bundle/packages/api/package.json
-  - from: ../../packages/shared/package.json
-    to: app-bundle/packages/shared/package.json
-  - from: ../../cat-config.json
-    to: app-bundle/cat-config.json
 
 win:
   target:
@@ -64,8 +35,6 @@ nsis:
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
-  # installerIcon: resources/icon.ico
-  # installerHeaderIcon: resources/icon.ico
   createDesktopShortcut: true
   createStartMenuShortcut: true
   shortcutName: Cat Cafe

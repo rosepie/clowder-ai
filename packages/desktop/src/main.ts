@@ -19,12 +19,18 @@ if (!gotTheLock) {
 // Paths
 // ---------------------------------------------------------------------------
 
-/** Root of the packaged app (or repo root in dev) */
+/**
+ * Root of the bundled app resources.
+ * - Packaged: resources/app-bundle (created by prepare-bundle.sh)
+ * - Dev: packages/desktop/app-bundle (or fall back to repo root)
+ */
 function getAppRoot(): string {
   if (app.isPackaged) {
     return join(process.resourcesPath, 'app-bundle');
   }
-  // dev: packages/desktop → repo root
+  // dev: check for app-bundle first, fall back to repo root
+  const devBundle = resolve(__dirname, '..', 'app-bundle');
+  if (existsSync(devBundle)) return devBundle;
   return resolve(__dirname, '..', '..', '..');
 }
 
@@ -111,7 +117,9 @@ function childEnv(extra: Record<string, string>): Record<string, string> {
 
 function startApiServer(cfg: UserConfig): void {
   const appRoot = getAppRoot();
-  const apiEntry = join(appRoot, 'packages', 'api', 'dist', 'index.js');
+  // In app-bundle layout: app-bundle/api/dist/index.js
+  const apiDir = join(appRoot, 'api');
+  const apiEntry = join(apiDir, 'dist', 'index.js');
 
   if (!existsSync(apiEntry)) {
     dialog.showErrorBox(
@@ -123,7 +131,6 @@ function startApiServer(cfg: UserConfig): void {
   }
 
   const catConfigPath = join(getUserDataDir(), 'cat-config.json');
-  const apiDir = join(appRoot, 'packages', 'api');
 
   const env = childEnv({
     NODE_ENV: 'production',
@@ -156,7 +163,8 @@ function startApiServer(cfg: UserConfig): void {
 
 function startNextServer(cfg: UserConfig): void {
   const appRoot = getAppRoot();
-  const webDir = join(appRoot, 'packages', 'web');
+  // In app-bundle layout: app-bundle/web/
+  const webDir = join(appRoot, 'web');
   // Resolve the actual Next.js CLI .js file (not the .bin shim which is .cmd on Windows)
   const nextCli = join(webDir, 'node_modules', 'next', 'dist', 'bin', 'next');
 
