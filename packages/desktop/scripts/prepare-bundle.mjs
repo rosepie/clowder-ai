@@ -12,7 +12,17 @@
 
 import { execSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, rmSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Resolve repo root from this script's location:
+// scripts/prepare-bundle.mjs → packages/desktop/scripts/ → repo root is ../../..
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const REPO_ROOT = resolve(__dirname, '..', '..', '..');
+
+// Change to repo root so all paths are consistent
+process.chdir(REPO_ROOT);
+console.log(`[prepare-bundle] Working directory: ${process.cwd()}`);
 
 const BUNDLE_DIR = join('packages', 'desktop', 'app-bundle');
 
