@@ -99,6 +99,7 @@ import { gameRoutes } from './routes/games.js';
 import {
   auditRoutes,
   authorizationRoutes,
+  availableClientsRoutes,
   backlogRoutes,
   bootcampRoutes,
   brakeRoutes,
@@ -759,6 +760,7 @@ async function main(): Promise<void> {
     threadStore,
   });
   await app.register(catsRoutes, { onCatalogChanged: syncAgentRegistry });
+  await app.register(availableClientsRoutes);
   await app.register(quotaRoutes);
   // F128: Daily token usage aggregation
   await app.register(usageRoutes, { invocationRecordStore });
@@ -1130,6 +1132,17 @@ async function main(): Promise<void> {
   }
   app.log.info(`[api] Server running on ${address}`);
   app.log.info(`[ws] WebSocket server ready`);
+
+  // Detect available CLI clients at startup (non-blocking)
+  const { detectAvailableClients } = await import('./utils/client-detection.js');
+  detectAvailableClients()
+    .then((clients) => {
+      const available = clients.filter((c) => c.available).map((c) => c.label);
+      app.log.info(`[api] Available CLI clients: ${available.length > 0 ? available.join(', ') : '(none)'}`);
+    })
+    .catch((err) => {
+      app.log.warn(`[api] Client detection failed: ${err}`);
+    });
 
   // F048 Phase A: Sweep orphaned invocations from previous process crash.
   // Runs only after the API has both:

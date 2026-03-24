@@ -186,6 +186,20 @@ describe('HubAddMemberWizard', () => {
           }),
         );
       }
+      if (path === '/api/available-clients') {
+        return Promise.resolve(
+          jsonResponse({
+            clients: [
+              { id: 'anthropic', label: 'Claude', command: 'claude', available: true },
+              { id: 'openai', label: 'Codex', command: 'codex', available: true },
+              { id: 'google', label: 'Gemini', command: 'gemini', available: true },
+              { id: 'dare', label: 'Dare', command: 'dare', available: true },
+              { id: 'opencode', label: 'OpenCode', command: 'opencode', available: true },
+              { id: 'antigravity', label: 'Antigravity', command: 'antigravity', available: true },
+            ],
+          }),
+        );
+      }
       throw new Error(`Unexpected apiFetch path: ${path}`);
     });
   });
