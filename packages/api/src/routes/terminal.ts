@@ -1,5 +1,4 @@
 import type { FastifyPluginAsync } from 'fastify';
-import * as pty from 'node-pty';
 import type { PortDiscoveryService } from '../domains/preview/port-discovery.js';
 import type { AgentPaneRegistry } from '../domains/terminal/agent-pane-registry.js';
 import { TerminalSessionStore } from '../domains/terminal/session-store.js';
@@ -7,19 +6,34 @@ import type { TmuxGateway } from '../domains/terminal/tmux-gateway.js';
 import { getWorktreeRoot } from '../domains/workspace/workspace-security.js';
 import { resolveUserId } from '../utils/request-identity.js';
 
+// node-pty is optional — terminal features degrade gracefully when missing
+// (e.g. Windows exe packaging where native compilation is impractical)
+let pty: typeof import('node-pty') | null = null;
+try {
+  pty = await import('node-pty');
+} catch {
+  // node-pty not available — terminal routes will return 503
+}
+
 interface TerminalRouteOpts {
   tmuxGateway?: TmuxGateway;
   agentPaneRegistry?: AgentPaneRegistry;
   portDiscovery?: PortDiscoveryService;
 }
 interface PtyBinding {
-  pty: pty.IPty;
+  pty: { onData: (cb: (data: string) => void) => { dispose: () => void }; onExit: (cb: () => void) => void; write: (data: string) => void; resize: (cols: number, rows: number) => void; kill: () => void };
 }
 
 export const terminalRoutes: FastifyPluginAsync<TerminalRouteOpts> = async (app, opts) => {
   const { tmuxGateway, agentPaneRegistry, portDiscovery } = opts;
   const store = new TerminalSessionStore();
   const ptys = new Map<string, PtyBinding>();
+
+  if (!pty) {
+    app.get('/api/terminal/status', async () => ({ available: false, reason: 'node-pty not installed' }));
+    return;
+  }
+  const ptyMod = pty;
 
   // --- Auth gate ---
   app.addHook('preHandler', async (req, reply) => {
@@ -63,7 +77,7 @@ export const terminalRoutes: FastifyPluginAsync<TerminalRouteOpts> = async (app,
         store.remove(existing.id); // Stale — fall through to create new
       } else {
         const sock = tmuxGateway.socketName(worktreeId);
-        const ptyProcess = pty.spawn(tmuxGateway.tmuxBin, ['-L', sock, 'attach', '-t', existing.paneId], ptyOpts);
+        const ptyProcess = ptyMod.spawn(tmuxGateway.tmuxBin, ['-L', sock, 'attach', '-t', existing.paneId], ptyOpts);
         ptys.set(existing.id, { pty: ptyProcess });
         store.markConnected(existing.id);
         return { sessionId: existing.id, paneId: existing.paneId, reconnected: true };
@@ -74,7 +88,7 @@ export const terminalRoutes: FastifyPluginAsync<TerminalRouteOpts> = async (app,
     await tmuxGateway.ensureServer(worktreeId);
     const paneId = await tmuxGateway.createPane(worktreeId, { cols, rows, cwd });
     const sock = tmuxGateway.socketName(worktreeId);
-    const ptyProcess = pty.spawn(tmuxGateway.tmuxBin, ['-L', sock, 'attach', '-t', paneId], ptyOpts);
+    const ptyProcess = ptyMod.spawn(tmuxGateway.tmuxBin, ['-L', sock, 'attach', '-t', paneId], ptyOpts);
 
     const session = store.create({ worktreeId, paneId, userId });
     ptys.set(session.id, { pty: ptyProcess });
@@ -239,7 +253,7 @@ export const terminalRoutes: FastifyPluginAsync<TerminalRouteOpts> = async (app,
     }
 
     const sock = tmuxGateway.socketName(worktreeId);
-    const ptyProcess = pty.spawn(tmuxGateway.tmuxBin, ['-L', sock, 'attach', '-r', '-t', paneId], {
+    const ptyProcess = ptyMod.spawn(tmuxGateway.tmuxBin, ['-L', sock, 'attach', '-r', '-t', paneId], {
       name: 'xterm-256color',
       cols: 80,
       rows: 24,

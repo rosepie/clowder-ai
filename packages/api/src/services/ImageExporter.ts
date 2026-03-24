@@ -1,8 +1,16 @@
-import puppeteer, { type Browser } from 'puppeteer';
-import sharp from 'sharp';
 import { createModuleLogger } from '../infrastructure/logger.js';
 
 const log = createModuleLogger('image-exporter');
+
+// puppeteer and sharp are optional — screenshot export degrades gracefully
+let puppeteerMod: typeof import('puppeteer') | null = null;
+let sharpMod: typeof import('sharp') | null = null;
+try {
+  puppeteerMod = await import('puppeteer');
+  sharpMod = await import('sharp');
+} catch {
+  log.warn('puppeteer/sharp not available — ImageExporter disabled');
+}
 
 /** Chunk height for scroll-and-stitch. 4000px is well under Chrome's ~16384 GPU limit. */
 const CHUNK_HEIGHT = 4000;
@@ -14,14 +22,15 @@ const VIEWPORT_WIDTH = 1280;
  * hitting Chrome's GPU texture limit (~16384px) which causes content duplication.
  */
 export class ImageExporter {
-  private browser: Browser | null = null;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private browser: any = null;
 
-  /**
-   * Capture a screenshot of the given URL.
-   * For pages taller than CHUNK_HEIGHT, scrolls through the page in chunks
-   * and stitches them together using Sharp.
-   */
   async capture(url: string, userId: string): Promise<Buffer> {
+    if (!puppeteerMod || !sharpMod) {
+      throw new Error('ImageExporter requires puppeteer and sharp — install them with: pnpm add puppeteer sharp');
+    }
+    const puppeteer = puppeteerMod.default;
+    const sharp = sharpMod.default;
     try {
       if (!this.browser) {
         this.browser = await puppeteer.launch({
@@ -131,7 +140,8 @@ export class ImageExporter {
   }
 
   /** Wait for two animation frames (one paint cycle). */
-  private async waitForPaint(page: puppeteer.Page): Promise<void> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  private async waitForPaint(page: any): Promise<void> {
     await page.evaluate(
       () =>
         new Promise<void>((resolve) =>
