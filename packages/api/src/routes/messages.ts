@@ -733,7 +733,8 @@ export const messagesRoutes: FastifyPluginAsync<MessagesRoutesOptions> = async (
               ...(controller?.signal ? { signal: controller.signal } : {}),
               ...(opts.invocationQueue
                 ? {
-                    queueHasQueuedMessages: (tid: string) => opts.invocationQueue?.hasQueuedForThread(tid) ?? false,
+                    queueHasQueuedMessages: (tid: string) =>
+                      opts.invocationQueue?.hasQueuedUserMessagesForThread(tid) ?? false,
                     hasQueuedOrActiveAgentForCat: (tid: string, catId: string) =>
                       opts.invocationQueue?.hasActiveOrQueuedAgentForCat(tid, catId) ?? false,
                   }

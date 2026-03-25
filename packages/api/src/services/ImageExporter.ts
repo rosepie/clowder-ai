@@ -3,8 +3,10 @@ import { createModuleLogger } from '../infrastructure/logger.js';
 const log = createModuleLogger('image-exporter');
 
 // puppeteer and sharp are optional — screenshot export degrades gracefully
-let puppeteerMod: typeof import('puppeteer') | null = null;
-let sharpMod: typeof import('sharp') | null = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let puppeteerMod: any = null;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+let sharpMod: any = null;
 try {
   puppeteerMod = await import('puppeteer');
   sharpMod = await import('sharp');

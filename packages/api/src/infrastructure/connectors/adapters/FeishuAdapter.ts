@@ -778,26 +778,6 @@ export function inferFeishuFileType(fileName: string): string {
   return FEISHU_EXT_TO_FILE_TYPE[ext] ?? 'stream';
 }
 
-/**
- * Phase J: Map file extension to Feishu file_type for native preview.
- * Feishu recognizes: pdf, doc, xls, ppt, mp4, opus, stream (catch-all).
- */
-const FEISHU_EXT_TO_FILE_TYPE: Record<string, string> = {
-  pdf: 'pdf',
-  doc: 'doc',
-  docx: 'doc',
-  xls: 'xls',
-  xlsx: 'xls',
-  ppt: 'ppt',
-  pptx: 'ppt',
-  mp4: 'mp4',
-};
-
-export function inferFeishuFileType(fileName: string): string {
-  const ext = fileName.split('.').pop()?.toLowerCase() ?? '';
-  return FEISHU_EXT_TO_FILE_TYPE[ext] ?? 'stream';
-}
-
 /** Read a Node.js ReadStream into a Buffer. */
 async function streamToBuffer(stream: import('node:fs').ReadStream): Promise<Buffer> {
   const chunks: Buffer[] = [];
