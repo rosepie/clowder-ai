@@ -53,8 +53,8 @@ export function ConfirmDialog({
   const isDanger = variant === 'danger';
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={onCancel}>
-      <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4" onClick={(e) => e.stopPropagation()}>
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
+      <div className="bg-white rounded-xl shadow-xl p-6 max-w-sm w-full mx-4">
         <h3 className="text-base font-semibold mb-2">{title}</h3>
         <p className="text-sm text-gray-600 mb-4 whitespace-pre-wrap">{message}</p>
         {requireInput && (

@@ -43,10 +43,9 @@ export function ImportProjectModal({ onClose, onImported }: ImportProjectModalPr
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
       <div
         className="w-full max-w-md rounded-xl border border-[#E7DAC7] bg-[#FFFDF8] p-6 shadow-lg"
-        onClick={(e) => e.stopPropagation()}
       >
         <h2 className="mb-4 text-base font-bold text-[#2B2118]">导入项目</h2>
 
