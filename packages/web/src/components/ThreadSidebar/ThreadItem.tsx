@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCatData } from '@/hooks/useCatData';
+import { useTheme } from '@/hooks/useTheme';
 import type { ThreadState } from '@/stores/chat-types';
 import { API_URL } from '@/utils/api-client';
 import { CatAvatar } from '../CatAvatar';
@@ -48,6 +49,7 @@ export function ThreadItem({
   preferredCats,
   isHubThread,
 }: ThreadItemProps) {
+  const { theme, config } = useTheme();
   const { getCatById } = useCatData();
   const canDelete = id !== 'default' && onDelete;
   const canRename = id !== 'default' && onRename;
@@ -99,11 +101,15 @@ export function ThreadItem({
   tooltipLines.push(formatRelativeTime(lastActiveAt, false));
   const tooltip = tooltipLines.join('\n');
 
+  const selectedBgColor =
+    isActive && theme === 'business' && config?.sidebar?.selectedItemBg ? config.sidebar.selectedItemBg : undefined;
+
   return (
     <div
       className={`group relative ${indented ? 'pl-7 pr-3' : 'px-3'} py-2.5 border-b border-gray-50 transition-colors cursor-pointer ${
         isActive ? 'bg-cocreator-bg' : 'hover:bg-gray-50'
       }`}
+      style={selectedBgColor ? { backgroundColor: selectedBgColor } : undefined}
       onClick={() => onSelect(id)}
       title={tooltip}
     >

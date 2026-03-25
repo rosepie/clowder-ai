@@ -100,6 +100,7 @@ import { resolveActiveProjectRoot } from './utils/active-project-root.js';
 import { resolveJiuwenClawAppDir, resolveJiuwenClawPythonBin } from './utils/jiuwenclaw-paths.js';
 import {
   auditRoutes,
+  authRoutes,
   authorizationRoutes,
   availableClientsRoutes,
   backlogRoutes,
@@ -942,6 +943,7 @@ async function main(): Promise<void> {
   await app.register(providerProfilesRoutes);
   await app.register(claudeRescueRoutes);
   await app.register(auditRoutes, { threadStore });
+  await app.register(authRoutes);
   await app.register(capabilitiesRoutes);
   await app.register(workspaceRoutes, {
     socketEmit: (event, data, room) => {

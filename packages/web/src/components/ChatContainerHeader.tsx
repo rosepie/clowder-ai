@@ -1,4 +1,5 @@
 import Link from 'next/link';
+import { useTheme } from '@/hooks/useTheme';
 import { useChatStore } from '@/stores/chatStore';
 import { ExportButton } from './ExportButton';
 import { HubButton } from './HubButton';
@@ -34,8 +35,15 @@ export function ChatContainerHeader({
   onToggleStatusPanel,
   defaultCatId,
 }: ChatContainerHeaderProps) {
+  const { theme, config, toggleTheme } = useTheme();
+
+  const headerBgColor = theme === 'business' && config?.header?.bg ? config.header.bg : undefined;
+
   return (
-    <header className="border-b border-cocreator-light bg-cocreator-bg safe-area-top">
+    <header
+      className="border-b border-cocreator-light bg-cocreator-bg safe-area-top"
+      style={headerBgColor ? { backgroundColor: headerBgColor } : undefined}
+    >
       <div className="px-5 py-3 flex items-center gap-2">
         <button
           onClick={onToggleSidebar}
@@ -82,6 +90,37 @@ export function ChatContainerHeader({
         )}
         {/* F099 P1-2: Hub gear in top bar — always reachable even when right panel shows workspace */}
         <HubButton />
+        {/* 主题切换按钮 */}
+        <button
+          onClick={toggleTheme}
+          className="p-1 rounded-lg hover:bg-cocreator-light transition-colors"
+          title={theme === 'default' ? '切换到商务主题' : '切换到默认主题'}
+          aria-label={theme === 'default' ? 'Switch to business theme' : 'Switch to default theme'}
+        >
+          {theme === 'default' ? (
+            <svg
+              className="w-5 h-5 text-gray-500"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M9 11h6M9 15h6M9 7h6" />
+            </svg>
+          ) : (
+            <svg
+              className="w-5 h-5 text-gray-500"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+            >
+              <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+              <path d="M2 17h20" />
+            </svg>
+          )}
+        </button>
         {/* Mobile/tablet: status sheet trigger */}
         <button
           onClick={onOpenMobileStatus}

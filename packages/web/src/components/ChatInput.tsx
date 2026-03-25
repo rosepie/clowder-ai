@@ -6,6 +6,7 @@ import { useCatData } from '@/hooks/useCatData';
 import { reconnectGame } from '@/hooks/useGameReconnect';
 import { usePathCompletion } from '@/hooks/usePathCompletion';
 import type { UploadStatus, WhisperOptions } from '@/hooks/useSendMessage';
+import { useTheme } from '@/hooks/useTheme';
 import type { DeliveryMode } from '@/stores/chat-types';
 import { useChatStore } from '@/stores/chatStore';
 import { useInputHistoryStore } from '@/stores/inputHistoryStore';
@@ -54,6 +55,7 @@ export function ChatInput({
   uploadStatus = 'idle',
   uploadError = null,
 }: ChatInputProps) {
+  const { theme, config } = useTheme();
   const { cats } = useCatData();
   const catOptions = useMemo(() => buildCatOptions(cats), [cats]);
   const whisperOptions = useMemo(() => buildWhisperOptions(cats), [cats]);
@@ -526,8 +528,13 @@ export function ChatInput({
     return () => document.removeEventListener('mousedown', handler);
   }, [activeMenu, closeMenus]);
 
+  const footerBgColor = theme === 'business' && config?.footer?.bg ? config.footer.bg : undefined;
+
   return (
-    <div className="border-t border-cocreator-light bg-cocreator-bg relative safe-area-bottom">
+    <div
+      className="border-t border-cocreator-light bg-cocreator-bg relative safe-area-bottom"
+      style={footerBgColor ? { backgroundColor: footerBgColor } : undefined}
+    >
       {/* F39: Queue status bar — visible when cat is running */}
       {hasActiveInvocation && (
         <div className="px-4 pt-2 flex items-center gap-2">

@@ -2,11 +2,13 @@
 
 import { useRouter } from 'next/navigation';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useTheme } from '@/hooks/useTheme';
 import { type Thread, useChatStore } from '@/stores/chatStore';
 import { apiFetch } from '@/utils/api-client';
 import { BootcampIcon } from '../icons/BootcampIcon';
 import { HubIcon } from '../icons/HubIcon';
 import { TaskPanel } from '../TaskPanel';
+import { UserProfile } from '../UserProfile';
 import { DirectoryPickerModal, type NewThreadOptions } from './DirectoryPickerModal';
 import { SectionGroup } from './SectionGroup';
 import { ThreadItem } from './ThreadItem';
@@ -23,6 +25,7 @@ interface ThreadSidebarProps {
 }
 
 export function ThreadSidebar({ onClose, className, onBootcampClick, onHubClick }: ThreadSidebarProps) {
+  const { theme, config } = useTheme();
   const router = useRouter();
   const {
     threads,
@@ -393,39 +396,16 @@ export function ThreadSidebar({ onClose, className, onBootcampClick, onHubClick 
 
   return (
     <>
-      <aside className={`${className ?? 'w-60'} border-r border-cocreator-light bg-white flex flex-col h-full`}>
+      <aside
+        className={`${className ?? 'w-60'} border-r border-cocreator-light bg-white flex flex-col h-full`}
+        style={{
+          backgroundColor: theme === 'business' && config ? config.sidebar.bg : undefined,
+        }}
+      >
         <div className="p-3 border-b border-cocreator-light flex items-center justify-between">
-          <span className="text-sm font-semibold text-cafe-black">对话</span>
-          <div className="flex items-center gap-1.5">
-            <button
-              type="button"
-              onClick={onBootcampClick ?? createBootcampThread}
-              disabled={!onBootcampClick && isCreating}
-              className="text-xs px-2 py-1 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 disabled:opacity-40 transition-colors"
-              title="猫猫训练营"
-              data-testid="sidebar-bootcamp"
-            >
-              <BootcampIcon className="w-3.5 h-3.5 inline-block -mt-0.5" />
-            </button>
-            {onHubClick && (
-              <button
-                type="button"
-                onClick={onHubClick}
-                className="text-xs px-2 py-1 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
-                title="IM Hub"
-                data-testid="sidebar-hub"
-              >
-                <HubIcon className="w-3.5 h-3.5 inline-block -mt-0.5" />
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setShowPicker(true)}
-              disabled={isCreating}
-              className="text-xs px-2 py-1 rounded-lg bg-cocreator-primary text-white hover:bg-cocreator-dark disabled:opacity-40 transition-colors"
-            >
-              {isCreating ? '...' : '+ 新对话'}
-            </button>
+          <div className="flex items-center gap-2">
+            <img src="/lobster.svg" alt="OfficeClaw" className="w-10 h-10" />
+            <span className="text-xl font-bold text-cafe-black">OfficeClaw</span>
           </div>
         </div>
 
@@ -457,6 +437,51 @@ export function ThreadSidebar({ onClose, className, onBootcampClick, onHubClick 
               <rect x="3" y="14" width="7" height="7" />
             </svg>
             Mission Hub
+          </button>
+        </div>
+
+        <div className="px-3 py-2 border-t border-b border-cocreator-light flex items-center justify-between">
+          <div className="flex items-center gap-1.5">
+            <a
+              href="/"
+              className="flex items-center gap-1.5 text-sm font-semibold text-cafe-black hover:text-cocreator-primary transition-colors"
+            >
+              <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+              </svg>
+              对话
+            </a>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onBootcampClick ?? createBootcampThread}
+              disabled={!onBootcampClick && isCreating}
+              className="text-xs px-2 py-1 rounded-lg border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100 disabled:opacity-40 transition-colors"
+              title="猫猫训练营"
+              data-testid="sidebar-bootcamp"
+            >
+              <BootcampIcon className="w-3.5 h-3.5 inline-block -mt-0.5" />
+            </button>
+            {onHubClick && (
+              <button
+                type="button"
+                onClick={onHubClick}
+                className="text-xs px-2 py-1 rounded-lg border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors"
+                title="IM Hub"
+                data-testid="sidebar-hub"
+              >
+                <HubIcon className="w-3.5 h-3.5 inline-block -mt-0.5" />
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowPicker(true)}
+            disabled={isCreating}
+            className="text-xs px-3 py-1.5 rounded-lg bg-cocreator-primary text-white hover:bg-cocreator-dark disabled:opacity-40 transition-colors font-medium"
+          >
+            {isCreating ? '...' : '+ 新对话'}
           </button>
         </div>
 
@@ -685,6 +710,10 @@ export function ThreadSidebar({ onClose, className, onBootcampClick, onHubClick 
             </div>
           )}
         </div>
+
+        <div className="border-t border-cocreator-light"></div>
+
+        <UserProfile />
 
         <TaskPanel />
       </aside>

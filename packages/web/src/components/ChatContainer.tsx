@@ -7,6 +7,7 @@ import { useAuthorization } from '@/hooks/useAuthorization';
 import { useCatData } from '@/hooks/useCatData';
 import { useChatHistory } from '@/hooks/useChatHistory';
 import { useChatSocketCallbacks } from '@/hooks/useChatSocketCallbacks';
+import { useTheme } from '@/hooks/useTheme';
 import { abortGame, godAction, submitAction } from '@/hooks/useGameApi';
 import { reconnectGame } from '@/hooks/useGameReconnect';
 import { usePersistedState } from '@/hooks/usePersistedState';
@@ -98,6 +99,7 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
   const isResearchMode = searchParams?.get('research') === 'multi';
   const { clearTasks } = useTaskStore();
   const { getCatById } = useCatData();
+  const { theme, config } = useTheme();
   const workspaceWorktreeId = useChatStore((s) => s.workspaceWorktreeId);
   usePreviewAutoOpen(workspaceWorktreeId);
   useWorkspaceNavigate(workspaceWorktreeId, threadId);
@@ -454,7 +456,7 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
       </div>
     );
   }
-
+console.log(theme);
   return (
     <div ref={containerRef} className="flex h-screen h-dvh">
       {sidebarOpen && (
@@ -467,7 +469,10 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
           />
           <div
             className="fixed inset-y-0 left-0 z-30 md:static md:z-auto flex-shrink-0"
-            style={{ width: sidebarWidth }}
+            style={{
+              width: sidebarWidth,
+              backgroundColor: theme === 'business' ? config.sidebar.bg : undefined,
+            }}
           >
             <ThreadSidebar
               onClose={() => setSidebarOpen(false)}
@@ -511,6 +516,9 @@ export function ChatContainer({ threadId }: ChatContainerProps) {
             ref={scrollContainerRef}
             onScroll={handleScroll}
             className="h-full overflow-y-auto p-4"
+            style={{
+              backgroundColor: theme === 'business' ? config.content.bg : undefined,
+            }}
             data-chat-container
           >
             {isLoadingHistory && <div className="text-center py-3 text-sm text-gray-400">加载历史消息...</div>}
