@@ -3,15 +3,16 @@ import { createModuleLogger } from '../infrastructure/logger.js';
 const log = createModuleLogger('image-exporter');
 
 // puppeteer and sharp are optional — screenshot export degrades gracefully
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let puppeteerMod: any = null;
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-let sharpMod: any = null;
+type Puppeteer = typeof import('puppeteer').default;
+type Sharp = typeof import('sharp');
+
+let puppeteer: Puppeteer | null = null;
+let sharp: Sharp | null = null;
 try {
-  const puppeteerImport = (await import('puppeteer')) as { default?: unknown };
-  const sharpImport = (await import('sharp')) as { default?: unknown };
-  puppeteerMod = puppeteerImport.default ?? puppeteerImport;
-  sharpMod = sharpImport.default ?? sharpImport;
+  // CJS/ESM interop: TS resolves .default as the module namespace rather than the
+  // declared default export. The runtime value is correct; narrow via unknown.
+  puppeteer = (await import('puppeteer')).default as unknown as Puppeteer;
+  sharp = (await import('sharp')).default as unknown as Sharp;
 } catch {
   log.warn('puppeteer/sharp not available — ImageExporter disabled');
 }
@@ -30,11 +31,9 @@ export class ImageExporter {
   private browser: any = null;
 
   async capture(url: string, userId: string): Promise<Buffer> {
-    if (!puppeteerMod || !sharpMod) {
+    if (!puppeteer || !sharp) {
       throw new Error('ImageExporter requires puppeteer and sharp — install them with: pnpm add puppeteer sharp');
     }
-    const puppeteer = puppeteerMod;
-    const sharp = sharpMod;
     try {
       if (!this.browser) {
         this.browser = await puppeteer.launch({

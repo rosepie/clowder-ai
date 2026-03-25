@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { apiFetch } from '@/utils/api-client';
 
 interface ImportProjectModalProps {
@@ -15,6 +15,14 @@ export function ImportProjectModal({ onClose, onImported }: ImportProjectModalPr
   const [description, setDescription] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [onClose]);
 
   const handleSubmit = async () => {
     if (!name.trim() || !sourcePath.trim()) {
@@ -43,10 +51,9 @@ export function ImportProjectModal({ onClose, onImported }: ImportProjectModalPr
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30">
       <div
         className="w-full max-w-md rounded-xl border border-[#E7DAC7] bg-[#FFFDF8] p-6 shadow-lg"
-        onClick={(e) => e.stopPropagation()}
       >
         <h2 className="mb-4 text-base font-bold text-[#2B2118]">导入项目</h2>
 
