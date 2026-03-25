@@ -56,6 +56,8 @@
     "sync:skills": "bash scripts/sync-skills.sh",
     "rescue:claude:thinking": "node ./scripts/rescue-claude-thinking-signature.mjs",
     "proxy:anthropic": "node ./scripts/anthropic-proxy.mjs",
+    "package:windows": "node ./scripts/build-windows-installer.mjs",
+    "package:windows:bundle": "node ./scripts/build-windows-installer.mjs --bundle-only",
     "logs:health": "bash ./scripts/logs-health.sh",
     "clean": "pnpm -r run clean && rm -rf node_modules",
     "check:start-profile-isolation": "node --test scripts/start-dev-profile-isolation.test.mjs"

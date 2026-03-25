@@ -54,6 +54,16 @@ test('Windows startup resolves portable Redis from the shared helper before glob
   assert.match(helpersScript, /Get-Command redis-server -ErrorAction SilentlyContinue/);
 });
 
+test('Windows startup provisions vendored jiuwenClaw runtime before API client detection', () => {
+  assert.match(helpersScript, /function Ensure-WindowsJiuwenClawRuntime/);
+  assert.match(helpersScript, /vendor\\jiuwenclaw/);
+  assert.match(helpersScript, /\.venv\\Scripts\\python\.exe/);
+  assert.match(helpersScript, /Resolve-ToolCommandWithRetry -Name "python" -Attempts 2/);
+  assert.match(helpersScript, /Resolve-ToolCommandWithRetry -Name "py" -Attempts 2/);
+  assert.match(helpersScript, /& \$venvPython -m pip install -e \./);
+  assert.match(startWindowsScript, /\$jiuwenClawRuntimeReady = Ensure-WindowsJiuwenClawRuntime -ProjectRoot \$ProjectRoot/);
+});
+
 test('Windows startup quotes portable Redis file arguments before Start-Process', () => {
   assert.match(helpersScript, /function Quote-WindowsProcessArgument/);
   assert.match(startWindowsScript, /Quote-WindowsProcessArgument -Value \$redisLayout\.Data/);
@@ -79,13 +89,14 @@ test('Windows stop script only stops Clowder-owned API and frontend listeners', 
 });
 
 test('Windows startup preserves runtime Redis overrides, validates artifacts, and exits when service jobs stop', () => {
-  assert.match(startWindowsScript, /\$configuredRedisUrl = if \(\$env:REDIS_URL\)/);
+  assert.match(startWindowsScript, /\$ConfiguredRedisUrl = if \(\$env:REDIS_URL\)/);
   assert.match(helpersScript, /function Test-LocalRedisUrl/);
   assert.match(helpersScript, /function Get-RedactedRedisUrl/);
   assert.match(
     startWindowsScript,
     /\$useExternalRedis = \$useRedis -and \$configuredRedisUrl -and -not \(Test-LocalRedisUrl -RedisUrl \$configuredRedisUrl -RedisPort \$RedisPort\)/,
   );
+  assert.match(startWindowsScript, /\$configuredRedisUrl = \$ConfiguredRedisUrl/);
   assert.match(startWindowsScript, /\$safeConfiguredRedisUrl = Get-RedactedRedisUrl -RedisUrl \$configuredRedisUrl/);
   assert.match(startWindowsScript, /Write-Ok "Using external Redis: \$safeConfiguredRedisUrl"/);
   assert.match(startWindowsScript, /\$safeEffectiveRedisUrl = Get-RedactedRedisUrl -RedisUrl \$effectiveRedisUrl/);
@@ -103,8 +114,13 @@ test('Windows startup preserves runtime Redis overrides, validates artifacts, an
   assert.match(startWindowsScript, /Write-Err "Build failed: mcp-server";\s+throw "Build failed: mcp-server"/);
   assert.match(startWindowsScript, /Write-Err "Build failed: api";\s+throw "Build failed: api"/);
   assert.match(startWindowsScript, /Write-Err "Build failed: web";\s+throw "Build failed: web"/);
-  assert.match(startWindowsScript, /\$nextCli = Join-Path \$ProjectRoot "node_modules\/next\/dist\/bin\/next"/);
-  assert.match(startWindowsScript, /Write-Err "Next CLI not found at \$nextCli - run pnpm install first"/);
+  assert.match(startWindowsScript, /\$nextCli = @\(/);
+  assert.match(startWindowsScript, /Join-Path \$ProjectRoot "packages\/web\/node_modules\/next\/dist\/bin\/next"/);
+  assert.match(startWindowsScript, /Join-Path \$ProjectRoot "node_modules\/next\/dist\/bin\/next"/);
+  assert.match(
+    startWindowsScript,
+    /Write-Err "Next CLI not found - run pnpm install first or rebuild the packaged bundle"/,
+  );
   assert.match(startWindowsScript, /Service job '\$\(\$job.Name\)' stopped \(\$\(\$job.State\)\)/);
 });
 
@@ -115,7 +131,7 @@ test('Windows startup preserves configured REDIS_URL with DB suffix and credenti
   );
 });
 
-test('Windows startup refuses non-Clowder Redis listeners before reusing port 6399', () => {
+test('Windows startup reuses existing local Redis listeners even when they are not Clowder-owned', () => {
   assert.match(
     startWindowsScript,
     /\$redisConnections = Get-NetTCPConnection -LocalPort \$RedisPort -State Listen -ErrorAction SilentlyContinue/,
@@ -127,9 +143,9 @@ test('Windows startup refuses non-Clowder Redis listeners before reusing port 63
   );
   assert.match(
     startWindowsScript,
-    /Write-Err "Redis port \$RedisPort is in use by non-Clowder PID \$\(\$conn\.OwningProcess\)\. Stop it manually or change REDIS_PORT\."/,
+    /Write-Warn "Redis port \$RedisPort is in use by non-Clowder PID \$\(\$conn\.OwningProcess\) - reusing existing local Redis"/,
   );
-  assert.match(startWindowsScript, /throw "Redis port \$RedisPort is in use by a non-Clowder process"/);
+  assert.doesNotMatch(startWindowsScript, /throw "Redis port \$RedisPort is in use by a non-Clowder process"/);
 });
 
 test('Windows startup only stops Clowder-owned listeners and records managed service PIDs', () => {
@@ -148,18 +164,49 @@ test('Windows startup only stops Clowder-owned listeners and records managed ser
   assert.match(startWindowsScript, /Clear-ManagedProcessId -PidFile \$ApiPidFile/);
 });
 
+test('Windows bundled runtime prefers random frontend, API, and Redis ports and persists runtime state for shutdown', () => {
+  assert.match(helpersScript, /function Test-TruthyEnvFlag/);
+  assert.match(helpersScript, /function Test-TcpPortAvailable/);
+  assert.match(helpersScript, /function Find-AvailableTcpPort/);
+  assert.match(helpersScript, /function Read-WindowsRuntimeStateFile/);
+  assert.match(helpersScript, /function Write-WindowsRuntimeStateFile/);
+  assert.match(helpersScript, /function Remove-WindowsRuntimeStateFile/);
+  assert.match(startWindowsScript, /\$RuntimeStateFile = Join-Path \$RunDir "runtime-state\.json"/);
+  assert.match(startWindowsScript, /\$ConfiguredRedisUrl = if \(\$env:REDIS_URL\) \{ \$env:REDIS_URL\.Trim\(\) \} else \{ "" \}/);
+  assert.match(startWindowsScript, /\$BundledDefaultRedisUrl = "redis:\/\/localhost:\$ConfiguredRedisPort"/);
+  assert.match(
+    startWindowsScript,
+    /if \(\$PreferRandomPorts -and \$ConfiguredRedisUrl -and \(\$ConfiguredRedisUrl\.ToLowerInvariant\(\) -eq \$BundledDefaultRedisUrl\.ToLowerInvariant\(\)\)\) \{/,
+  );
+  assert.match(
+    startWindowsScript,
+    /\$UseRandomFrontendApiPorts = \$PreferRandomPorts -and \$ConfiguredApiPort -eq 3004 -and \$ConfiguredWebPort -eq 3003/,
+  );
+  assert.match(startWindowsScript, /Find-AvailableFrontendApiPorts/);
+  assert.match(
+    startWindowsScript,
+    /\$UseRandomRedisPort = \$PreferRandomPorts -and -not \$ConfiguredRedisUrl -and \$ConfiguredRedisPort -eq 6399/,
+  );
+  assert.match(startWindowsScript, /Write-Ok "Redis port selected: \$RedisPort \(random\)"/);
+  assert.match(startWindowsScript, /Write-WindowsRuntimeStateFile -StateFile \$RuntimeStateFile -State/);
+  assert.match(startWindowsScript, /NEXT_PUBLIC_API_URL = "http:\/\/127\.0\.0\.1:\$ApiPort"/);
+  assert.match(startWindowsScript, /Remove-WindowsRuntimeStateFile -StateFile \$RuntimeStateFile/);
+});
+
 test('Windows installer and startup reuse shared tool resolution instead of raw pnpm PATH lookups', () => {
   assert.match(installScript, /Resolve-ToolCommand -Name "pnpm"/);
   assert.match(installScript, /\$corepackCommand = Resolve-ToolCommand -Name "corepack"/);
   assert.match(installScript, /\$npmCommand = Resolve-ToolCommand -Name "npm"/);
   assert.match(installScript, /Resolve-ToolCommand -Name \$tool\.Cmd/);
+  assert.match(startWindowsScript, /Resolve-BundledNodeCommand -ProjectRoot \$ProjectRoot/);
+  assert.match(startWindowsScript, /\$nodeCommand = Resolve-ToolCommand -Name "node"/);
   assert.match(startWindowsScript, /\$pnpmCommand = Resolve-ToolCommand -Name "pnpm"/);
   assert.match(startWindowsScript, /& \$pnpmCommand run build/);
-  assert.match(startWindowsScript, /param\(\$root, \$port, \$nextCli\)/);
-  assert.match(startWindowsScript, /& node \$nextCli dev \(Join-Path \$root "packages\/web"\) -p \$port/);
+  assert.match(startWindowsScript, /param\(\$root, \$port, \$nextCli, \$nodeCommand\)/);
+  assert.match(startWindowsScript, /& \$nodeCommand \$nextCli dev \(Join-Path \$root "packages\/web"\) -p \$port/);
   assert.match(
     startWindowsScript,
-    /& node \$nextCli start \(Join-Path \$root "packages\/web"\) -p \$port -H 0\.0\.0\.0/,
+    /& \$nodeCommand \$nextCli start \(Join-Path \$root "packages\/web"\) -p \$port -H 0\.0\.0\.0/,
   );
 });
 
@@ -191,15 +238,16 @@ test('Windows PATH refresh preserves shell-provided shim entries while appending
 
 test('Windows stop script resolves redis-cli through the shared helper chain before shutdown', () => {
   assert.match(stopWindowsScript, /install-windows-helpers\.ps1/);
+  assert.match(stopWindowsScript, /\$RuntimeStateFile = if \(\$RunDir\) \{ Join-Path \$RunDir "runtime-state\.json" \} else \{ \$null \}/);
+  assert.match(stopWindowsScript, /Read-WindowsRuntimeStateFile -StateFile \$RuntimeStateFile/);
   assert.match(stopWindowsScript, /Resolve-PortableRedisBinaries -ProjectRoot \$ProjectRoot/);
   assert.match(stopWindowsScript, /Resolve-PortableRedisLayout -ProjectRoot \$ProjectRoot/);
   assert.match(stopWindowsScript, /Resolve-GlobalRedisBinaries/);
   assert.match(stopWindowsScript, /\$redisCli = \$redisCommands\.CliPath/);
   assert.doesNotMatch(stopWindowsScript, /& redis-cli -p \$RedisPort ping/);
-  assert.match(
-    stopWindowsScript,
-    /\$redisPidFile = if \(\$redisLayout\) \{ Join-Path \$redisLayout\.Data "redis-\$RedisPort\.pid" \} else \{ \$null \}/,
-  );
+  assert.match(stopWindowsScript, /\$configuredRedisUrl = if \(\$runtimeState -and \$runtimeState\.RedisUrl\)/);
+  assert.match(stopWindowsScript, /\$ApiPidFile = if \(\$runtimeState -and \$runtimeState\.ApiPidFile\)/);
+  assert.match(stopWindowsScript, /\$redisPidFile = if \(\$runtimeState -and \$runtimeState\.RedisPidFile\)/);
   assert.match(
     stopWindowsScript,
     /\$redisConnections = Get-NetTCPConnection -LocalPort \$RedisPort -State Listen -ErrorAction SilentlyContinue/,
@@ -213,6 +261,7 @@ test('Windows stop script resolves redis-cli through the shared helper chain bef
   assert.match(stopWindowsScript, /Get-RedisAuthArgs\s+-RedisUrl\s+\$configuredRedisUrl/);
   assert.match(stopWindowsScript, /@redisAuthArgs\s+ping/);
   assert.match(stopWindowsScript, /@redisAuthArgs\s+shutdown/);
+  assert.match(stopWindowsScript, /Remove-WindowsRuntimeStateFile -StateFile \$RuntimeStateFile/);
 });
 
 test('Windows start.bat delegates to start-windows.ps1', () => {

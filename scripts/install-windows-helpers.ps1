@@ -298,6 +298,112 @@ function Get-RedisServerAuthArgs {
     return @()
 }
 
+function Test-TruthyEnvFlag {
+    param([string]$Value, [bool]$Default = $false)
+
+    if ($null -eq $Value -or $Value -eq "") {
+        return $Default
+    }
+
+    switch ($Value.Trim().ToLowerInvariant()) {
+        "1" { return $true }
+        "true" { return $true }
+        "yes" { return $true }
+        "on" { return $true }
+        "0" { return $false }
+        "false" { return $false }
+        "no" { return $false }
+        "off" { return $false }
+        default { return $Default }
+    }
+}
+
+function Test-TcpPortAvailable {
+    param([int]$Port)
+
+    if ($Port -le 0 -or $Port -gt 65535) {
+        return $false
+    }
+
+    $listener = $null
+    try {
+        $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, $Port)
+        $listener.Server.ExclusiveAddressUse = $true
+        $listener.Start()
+        return $true
+    } catch {
+        return $false
+    } finally {
+        if ($listener) {
+            $listener.Stop()
+        }
+    }
+}
+
+function Find-AvailableTcpPort {
+    param([int[]]$ExcludePorts = @(), [int]$Attempts = 64)
+
+    for ($attempt = 0; $attempt -lt $Attempts; $attempt++) {
+        $listener = $null
+        try {
+            $listener = [System.Net.Sockets.TcpListener]::new([System.Net.IPAddress]::Loopback, 0)
+            $listener.Server.ExclusiveAddressUse = $true
+            $listener.Start()
+            $port = ([System.Net.IPEndPoint]$listener.LocalEndpoint).Port
+            if ($ExcludePorts -notcontains $port) {
+                return $port
+            }
+        } finally {
+            if ($listener) {
+                $listener.Stop()
+            }
+        }
+    }
+
+    throw "Could not find an available TCP port"
+}
+
+function Read-WindowsRuntimeStateFile {
+    param([string]$StateFile)
+
+    if (-not $StateFile -or -not (Test-Path $StateFile)) {
+        return $null
+    }
+
+    try {
+        return Get-Content $StateFile -Raw | ConvertFrom-Json
+    } catch {
+        return $null
+    }
+}
+
+function Write-WindowsRuntimeStateFile {
+    param([string]$StateFile, $State)
+
+    if (-not $StateFile -or $null -eq $State) {
+        return
+    }
+
+    $parentDir = Split-Path -Parent $StateFile
+    if ($parentDir) {
+        New-Item -Path $parentDir -ItemType Directory -Force | Out-Null
+    }
+
+    $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+    $json = $State | ConvertTo-Json -Depth 6
+    [System.IO.File]::WriteAllText($StateFile, $json + "`r`n", $utf8NoBom)
+}
+
+function Remove-WindowsRuntimeStateFile {
+    param([string]$StateFile)
+
+    if (-not $StateFile) {
+        return
+    }
+
+    Remove-Item $StateFile -ErrorAction SilentlyContinue
+}
+
 function Get-InstallerExceptionDetails {
     param($ErrorRecord)
 
@@ -428,6 +534,63 @@ function Ensure-WindowsRedis {
         Write-InstallerExceptionDetails -Context "Redis auto-install" -ErrorRecord $_
         Write-Warn "Manual Redis install: https://github.com/redis-windows/redis-windows/releases"
         return $false
+    }
+}
+
+function Ensure-WindowsJiuwenClawRuntime {
+    param([string]$ProjectRoot)
+
+    if (-not $ProjectRoot) {
+        return $false
+    }
+
+    $appDir = Join-Path $ProjectRoot "vendor\jiuwenclaw"
+    $appEntry = Join-Path $appDir "jiuwenclaw\app.py"
+    if (-not (Test-Path $appEntry)) {
+        return $false
+    }
+
+    $venvPython = Join-Path $appDir ".venv\Scripts\python.exe"
+    if (Test-Path $venvPython) {
+        return $true
+    }
+
+    $pythonCommand = Resolve-ToolCommandWithRetry -Name "python" -Attempts 2
+    $pythonArgs = @()
+    if (-not $pythonCommand) {
+        $pythonCommand = Resolve-ToolCommandWithRetry -Name "py" -Attempts 2
+        if ($pythonCommand) {
+            $pythonArgs = @("-3")
+        }
+    }
+    if (-not $pythonCommand) {
+        Write-Warn "jiuwenClaw runtime unavailable - Python 3.11+ not found"
+        return $false
+    }
+
+    Write-Host "  Preparing jiuwenClaw runtime..."
+    try {
+        Push-Location $appDir
+        & $pythonCommand @pythonArgs -m venv ".venv"
+        if ($LASTEXITCODE -ne 0) {
+            throw "python -m venv failed"
+        }
+        & $venvPython -m pip install --upgrade pip setuptools wheel
+        if ($LASTEXITCODE -ne 0) {
+            throw "pip bootstrap failed"
+        }
+        & $venvPython -m pip install -e .
+        if ($LASTEXITCODE -ne 0) {
+            throw "jiuwenClaw dependency install failed"
+        }
+        Write-Ok "jiuwenClaw runtime prepared"
+        return $true
+    } catch {
+        Write-Warn "jiuwenClaw runtime setup failed - sidecar will stay unavailable"
+        Write-InstallerExceptionDetails -Context "jiuwenClaw runtime" -ErrorRecord $_
+        return $false
+    } finally {
+        Pop-Location
     }
 }
 

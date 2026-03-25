@@ -53,6 +53,24 @@ function Resolve-ToolCommand {
     return $null
 }
 
+function Resolve-BundledNodeCommand {
+    param([string]$ProjectRoot)
+    if (-not $ProjectRoot) { return $null }
+    $bundledNode = Join-Path $ProjectRoot "tools\node\node.exe"
+    if (-not (Test-Path $bundledNode)) {
+        return $null
+    }
+    Add-ProcessPathPrefix -Directory (Split-Path -Parent $bundledNode)
+    return $bundledNode
+}
+
+function Test-ClowderBundledRelease {
+    param([string]$ProjectRoot)
+    if (-not $ProjectRoot) { return $false }
+    return (Test-Path (Join-Path $ProjectRoot ".clowder-release.json")) -and
+        (Test-Path (Join-Path $ProjectRoot "tools\node\node.exe"))
+}
+
 function Merge-ToolPathSegments {
     param([string[]]$PathValues)
 
