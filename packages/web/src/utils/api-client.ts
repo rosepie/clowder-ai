@@ -14,12 +14,23 @@ function getBrowserLocation(): Location | null {
   return candidate ?? null;
 }
 
+function isLoopbackHost(hostname: string | undefined): boolean {
+  return hostname === 'localhost' || hostname === '127.0.0.1';
+}
+
 function resolveApiUrl(): string {
   const location = getBrowserLocation();
 
   // Cloudflare Tunnel: API 走 api.clowder-ai.com，Access cookie 在 .clowder-ai.com 上共享
   if (location?.hostname === 'cafe.clowder-ai.com') {
     return 'https://api.clowder-ai.com';
+  }
+  if (isLoopbackHost(location?.hostname)) {
+    const frontendPort = Number(location?.port ?? '') || 3003;
+    const apiPort = frontendPort + 1;
+    const protocol = location?.protocol ?? 'http:';
+    const hostname = location?.hostname ?? '127.0.0.1';
+    return `${protocol}//${hostname}:${apiPort}`;
   }
   if (process.env.NEXT_PUBLIC_API_URL) return process.env.NEXT_PUBLIC_API_URL;
   if (typeof window === 'undefined') return 'http://localhost:3004';

@@ -21,6 +21,8 @@ if ($ScriptDir) {
 }
 $ProjectRoot = if ($ScriptDir) { Split-Path -Parent $ScriptDir } else { $null }
 $RunDir = if ($ProjectRoot) { Join-Path $ProjectRoot ".cat-cafe/run/windows" } else { $null }
+$RuntimeStateFile = if ($RunDir) { Join-Path $RunDir "runtime-state.json" } else { $null }
+$runtimeState = Read-WindowsRuntimeStateFile -StateFile $RuntimeStateFile
 
 Write-Host "Cat Cafe - Stopping services" -ForegroundColor Cyan
 Write-Host "============================="
@@ -49,7 +51,23 @@ if (Test-Path $envFile) {
     }
 }
 
-$configuredRedisUrl = Get-InstallerEnvValueFromFile -EnvFile $envFile -Key "REDIS_URL"
+if ($runtimeState) {
+    if ($runtimeState.ApiPort) {
+        $ApiPort = [int]$runtimeState.ApiPort
+    }
+    if ($runtimeState.WebPort) {
+        $WebPort = [int]$runtimeState.WebPort
+    }
+    if ($runtimeState.RedisPort) {
+        $RedisPort = [int]$runtimeState.RedisPort
+    }
+}
+
+$configuredRedisUrl = if ($runtimeState -and $runtimeState.RedisUrl) {
+    [string]$runtimeState.RedisUrl
+} else {
+    Get-InstallerEnvValueFromFile -EnvFile $envFile -Key "REDIS_URL"
+}
 if (-not $configuredRedisUrl -and $env:REDIS_URL) {
     $configuredRedisUrl = $env:REDIS_URL.Trim()
 }
@@ -116,8 +134,20 @@ function Stop-PortProcess {
     }
 }
 
-$ApiPidFile = if ($RunDir) { Join-Path $RunDir "api-$ApiPort.pid" } else { $null }
-$WebPidFile = if ($RunDir) { Join-Path $RunDir "web-$WebPort.pid" } else { $null }
+$ApiPidFile = if ($runtimeState -and $runtimeState.ApiPidFile) {
+    [string]$runtimeState.ApiPidFile
+} elseif ($RunDir) {
+    Join-Path $RunDir "api-$ApiPort.pid"
+} else {
+    $null
+}
+$WebPidFile = if ($runtimeState -and $runtimeState.WebPidFile) {
+    [string]$runtimeState.WebPidFile
+} elseif ($RunDir) {
+    Join-Path $RunDir "web-$WebPort.pid"
+} else {
+    $null
+}
 
 Stop-PortProcess -Port $ApiPort -Name "API Server" -PidFile $ApiPidFile -ProjectRoot $ProjectRoot
 Stop-PortProcess -Port $WebPort -Name "Frontend" -PidFile $WebPidFile -ProjectRoot $ProjectRoot
@@ -125,7 +155,13 @@ Stop-PortProcess -Port $WebPort -Name "Frontend" -PidFile $WebPidFile -ProjectRo
 # Stop Redis if running on our port
 $redisCommands = $null
 $redisLayout = if ($ProjectRoot) { Resolve-PortableRedisLayout -ProjectRoot $ProjectRoot } else { $null }
-$redisPidFile = if ($redisLayout) { Join-Path $redisLayout.Data "redis-$RedisPort.pid" } else { $null }
+$redisPidFile = if ($runtimeState -and $runtimeState.RedisPidFile) {
+    [string]$runtimeState.RedisPidFile
+} elseif ($redisLayout) {
+    Join-Path $redisLayout.Data "redis-$RedisPort.pid"
+} else {
+    $null
+}
 if ($ProjectRoot) {
     $redisCommands = Resolve-PortableRedisBinaries -ProjectRoot $ProjectRoot
 }
@@ -173,5 +209,10 @@ if ($configuredRedisUrl -and -not (Test-LocalRedisUrl -RedisUrl $configuredRedis
         Write-Warn "Redis (port $RedisPort) - not running"
     }
 }
+
+Remove-Item $ApiPidFile -ErrorAction SilentlyContinue
+Remove-Item $WebPidFile -ErrorAction SilentlyContinue
+Remove-Item $redisPidFile -ErrorAction SilentlyContinue
+Remove-WindowsRuntimeStateFile -StateFile $RuntimeStateFile
 
 Write-Host "`nAll services stopped." -ForegroundColor Green

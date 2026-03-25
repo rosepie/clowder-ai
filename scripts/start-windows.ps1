@@ -61,20 +61,52 @@ if (Test-Path $envFile) {
     Write-Warn ".env not found - using defaults"
 }
 
-$pnpmCommand = Resolve-ToolCommand -Name "pnpm"
-if (-not $pnpmCommand) {
-    Write-Err "pnpm not found. Run .\scripts\install.ps1 first."
+$bundledRelease = Test-ClowderBundledRelease -ProjectRoot $ProjectRoot
+$nodeCommand = Resolve-BundledNodeCommand -ProjectRoot $ProjectRoot
+if (-not $nodeCommand) {
+    $nodeCommand = Resolve-ToolCommand -Name "node"
+}
+if (-not $nodeCommand) {
+    Write-Err "Node.js not found. Run .\scripts\install.ps1 first or reinstall the packaged bundle."
     exit 1
 }
-Write-Ok "pnpm: $pnpmCommand"
+Write-Ok "Node: $nodeCommand"
+
+$jiuwenClawRuntimeReady = Ensure-WindowsJiuwenClawRuntime -ProjectRoot $ProjectRoot
+
+$pnpmCommand = $null
+if ($bundledRelease) {
+    Write-Ok "Bundled release detected - prebuilt runtime enabled"
+    if ($Dev) {
+        Write-Warn "Bundled release does not support -Dev - using production mode"
+        $Dev = $false
+    }
+    if (-not $Quick) {
+        Write-Warn "Bundled release uses prebuilt artifacts - enabling -Quick"
+        $Quick = $true
+    }
+} else {
+    $pnpmCommand = Resolve-ToolCommand -Name "pnpm"
+    if (-not $pnpmCommand) {
+        Write-Err "pnpm not found. Run .\scripts\install.ps1 first."
+        exit 1
+    }
+    Write-Ok "pnpm: $pnpmCommand"
+}
 
 # -- Ports ---------------------------------------------------
-$ApiPort = if ($env:API_SERVER_PORT) { $env:API_SERVER_PORT } else { "3004" }
-$WebPort = if ($env:FRONTEND_PORT) { $env:FRONTEND_PORT } else { "3003" }
-$RedisPort = if ($env:REDIS_PORT) { $env:REDIS_PORT } else { "6399" }
+$ConfiguredApiPort = if ($env:API_SERVER_PORT) { [int]$env:API_SERVER_PORT } else { 3004 }
+$ConfiguredWebPort = if ($env:FRONTEND_PORT) { [int]$env:FRONTEND_PORT } else { 3003 }
+$ConfiguredRedisPort = if ($env:REDIS_PORT) { [int]$env:REDIS_PORT } else { 6399 }
+$ConfiguredRedisUrl = if ($env:REDIS_URL) { $env:REDIS_URL.Trim() } else { "" }
+$ApiPort = $ConfiguredApiPort
+$WebPort = $ConfiguredWebPort
+$RedisPort = $ConfiguredRedisPort
 $RunDir = Join-Path $ProjectRoot ".cat-cafe/run/windows"
 $ApiPidFile = Join-Path $RunDir "api-$ApiPort.pid"
 $WebPidFile = Join-Path $RunDir "web-$WebPort.pid"
+$RuntimeStateFile = Join-Path $RunDir "runtime-state.json"
+$StopScript = Join-Path $ScriptDir "stop-windows.ps1"
 New-Item -Path $RunDir -ItemType Directory -Force | Out-Null
 
 # -- Kill existing port processes ----------------------------
@@ -145,6 +177,93 @@ function Stop-PortProcess {
     }
 }
 
+function Get-ServicePidFile {
+    param([string]$ServiceKey, [int]$Port)
+    return Join-Path $RunDir "$ServiceKey-$Port.pid"
+}
+
+function Find-AvailableFrontendApiPorts {
+    param([int[]]$ExcludePorts = @(), [int]$Attempts = 64)
+
+    for ($attempt = 0; $attempt -lt $Attempts; $attempt++) {
+        $webPort = Find-AvailableTcpPort -ExcludePorts $ExcludePorts
+        if ($webPort -ge 65535) {
+            continue
+        }
+
+        $apiPort = $webPort + 1
+        if ($ExcludePorts -contains $apiPort) {
+            continue
+        }
+
+        if (-not (Test-TcpPortAvailable -Port $apiPort)) {
+            continue
+        }
+
+        return [pscustomobject]@{
+            WebPort = $webPort
+            ApiPort = $apiPort
+        }
+    }
+
+    throw "Could not find an available frontend/API port pair"
+}
+
+function Resolve-ServiceRuntimePort {
+    param(
+        [string]$ServiceKey,
+        [string]$Name,
+        [int]$ConfiguredPort,
+        [string]$ProjectRoot,
+        [bool]$PreferRandom,
+        [int[]]$ReservedPorts = @()
+    )
+
+    if (-not $PreferRandom) {
+        $configuredPidFile = Get-ServicePidFile -ServiceKey $ServiceKey -Port $ConfiguredPort
+        try {
+            Stop-PortProcess -Port $ConfiguredPort -Name $Name -PidFile $configuredPidFile -ProjectRoot $ProjectRoot
+            return $ConfiguredPort
+        } catch {
+            Write-Warn "Configured port $ConfiguredPort ($Name) is unavailable - selecting a random port instead"
+        }
+    }
+
+    $randomPort = Find-AvailableTcpPort -ExcludePorts ($ReservedPorts + @($ConfiguredPort))
+    Write-Ok "$Name port selected: $randomPort (random)"
+    return $randomPort
+}
+
+$PreferRandomPorts = Test-TruthyEnvFlag -Value $env:CAT_CAFE_WINDOWS_RANDOM_PORTS -Default ($bundledRelease -and -not $Dev)
+$BundledDefaultRedisUrl = "redis://localhost:$ConfiguredRedisPort"
+if ($PreferRandomPorts -and $ConfiguredRedisUrl -and ($ConfiguredRedisUrl.ToLowerInvariant() -eq $BundledDefaultRedisUrl.ToLowerInvariant())) {
+    Remove-Item Env:REDIS_URL -ErrorAction SilentlyContinue
+    $ConfiguredRedisUrl = ""
+}
+$UseRandomFrontendApiPorts = $PreferRandomPorts -and $ConfiguredApiPort -eq 3004 -and $ConfiguredWebPort -eq 3003
+$UseRandomRedisPort = $PreferRandomPorts -and -not $ConfiguredRedisUrl -and $ConfiguredRedisPort -eq 6399
+
+if ((Test-Path $RuntimeStateFile) -and (Test-Path $StopScript)) {
+    Write-Step "Clear stale runtime state"
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $StopScript
+}
+
+if ($UseRandomFrontendApiPorts) {
+    $portPair = Find-AvailableFrontendApiPorts
+    $WebPort = [int]$portPair.WebPort
+    $ApiPort = [int]$portPair.ApiPort
+    Write-Ok "Frontend port selected: $WebPort (random)"
+    Write-Ok "API port selected: $ApiPort (random)"
+} else {
+    $ApiPort = Resolve-ServiceRuntimePort -ServiceKey "api" -Name "API" -ConfiguredPort $ConfiguredApiPort -ProjectRoot $ProjectRoot -PreferRandom $false
+    $WebPort = Resolve-ServiceRuntimePort -ServiceKey "web" -Name "Frontend" -ConfiguredPort $ConfiguredWebPort -ProjectRoot $ProjectRoot -PreferRandom $false -ReservedPorts @([int]$ApiPort)
+}
+
+$ApiPidFile = Join-Path $RunDir "api-$ApiPort.pid"
+$WebPidFile = Join-Path $RunDir "web-$WebPort.pid"
+$env:API_SERVER_PORT = "$ApiPort"
+$env:FRONTEND_PORT = "$WebPort"
+
 Write-Step "Check ports"
 Stop-PortProcess -Port ([int]$ApiPort) -Name "API" -PidFile $ApiPidFile -ProjectRoot $ProjectRoot
 Stop-PortProcess -Port ([int]$WebPort) -Name "Frontend" -PidFile $WebPidFile -ProjectRoot $ProjectRoot
@@ -161,7 +280,7 @@ $redisSource = $null
 $redisAuthArgs = @()
 $redisLogFile = Join-Path $redisLayout.Logs "redis-$RedisPort.log"
 $redisPidFile = Join-Path $redisLayout.Data "redis-$RedisPort.pid"
-$configuredRedisUrl = if ($env:REDIS_URL) { $env:REDIS_URL.Trim() } else { "" }
+$configuredRedisUrl = $ConfiguredRedisUrl
 $useExternalRedis = $useRedis -and $configuredRedisUrl -and -not (Test-LocalRedisUrl -RedisUrl $configuredRedisUrl -RedisPort $RedisPort)
 $safeConfiguredRedisUrl = Get-RedactedRedisUrl -RedisUrl $configuredRedisUrl
 
@@ -179,6 +298,12 @@ if ($useExternalRedis) {
         Write-Ok "Redis binaries resolved ($redisSource): $($redisCommands.BinDir)"
     }
     $redisAuthArgs = Get-RedisAuthArgs -RedisUrl $configuredRedisUrl
+    if ($UseRandomRedisPort) {
+        $RedisPort = Find-AvailableTcpPort -ExcludePorts @([int]$ApiPort, [int]$WebPort, $ConfiguredRedisPort)
+        $redisLogFile = Join-Path $redisLayout.Logs "redis-$RedisPort.log"
+        $redisPidFile = Join-Path $redisLayout.Data "redis-$RedisPort.pid"
+        Write-Ok "Redis port selected: $RedisPort (random)"
+    }
     # Check if Redis is already running
     try {
         if (-not $redisCliPath) {
@@ -195,8 +320,7 @@ if ($useExternalRedis) {
                 $isManagedPid = $managedRedisPid -and ($conn.OwningProcess -eq $managedRedisPid)
                 $isClowderOwned = $isManagedPid -or (Test-ClowderOwnedProcess -ProcessId $conn.OwningProcess -ProjectRoot $ProjectRoot)
                 if (-not $isClowderOwned) {
-                    Write-Err "Redis port $RedisPort is in use by non-Clowder PID $($conn.OwningProcess). Stop it manually or change REDIS_PORT."
-                    throw "Redis port $RedisPort is in use by a non-Clowder process"
+                    Write-Warn "Redis port $RedisPort is in use by non-Clowder PID $($conn.OwningProcess) - reusing existing local Redis"
                 }
             }
             Write-Ok "Redis already running on port $RedisPort"
@@ -205,13 +329,11 @@ if ($useExternalRedis) {
             } else {
                 $env:REDIS_URL = "redis://localhost:$RedisPort"
             }
+            $env:REDIS_PORT = "$RedisPort"
         } else {
             throw "not running"
         }
     } catch {
-        if ($_.Exception -and $_.Exception.Message -like "Redis port $RedisPort is in use by a non-Clowder process") {
-            throw
-        }
         Write-Warn "Redis not running on port $RedisPort"
         # Try to start Redis
         try {
@@ -238,6 +360,7 @@ if ($useExternalRedis) {
                     } else {
                         $env:REDIS_URL = "redis://localhost:$RedisPort"
                     }
+                    $env:REDIS_PORT = "$RedisPort"
                     $startedRedis = $true
                 } else {
                     Write-Warn "Redis start failed - falling back to memory storage"
@@ -259,6 +382,7 @@ if ($useExternalRedis) {
 if (-not $useRedis) {
     Write-Warn "Memory mode - data will be lost on restart"
     Remove-Item Env:REDIS_URL -ErrorAction SilentlyContinue
+    Remove-Item Env:REDIS_PORT -ErrorAction SilentlyContinue
     $env:MEMORY_STORE = "1"
 }
 
@@ -318,9 +442,12 @@ try {
         Write-Err ".next directory not found - run without -Quick first to build"
         throw ".next directory not found"
     }
-    $nextCli = Join-Path $ProjectRoot "node_modules/next/dist/bin/next"
+    $nextCli = @(
+        (Join-Path $ProjectRoot "packages/web/node_modules/next/dist/bin/next"),
+        (Join-Path $ProjectRoot "node_modules/next/dist/bin/next")
+    ) | Where-Object { Test-Path $_ } | Select-Object -First 1
     if (-not (Test-Path $nextCli)) {
-        Write-Err "Next CLI not found at $nextCli - run pnpm install first"
+        Write-Err "Next CLI not found - run pnpm install first or rebuild the packaged bundle"
         throw "Next CLI not found"
     }
 
@@ -331,18 +458,35 @@ try {
     $jobs = @()
     $runtimeEnvOverrides = @{
         REDIS_URL = $env:REDIS_URL
+        REDIS_PORT = $env:REDIS_PORT
         MEMORY_STORE = $env:MEMORY_STORE
         CAT_CAFE_MCP_SERVER_PATH = $env:CAT_CAFE_MCP_SERVER_PATH
         API_SERVER_PORT = $ApiPort
         FRONTEND_PORT = $WebPort
+        NEXT_PUBLIC_API_URL = "http://127.0.0.1:$ApiPort"
     }
+    Write-WindowsRuntimeStateFile -StateFile $RuntimeStateFile -State ([ordered]@{
+        GeneratedAt = (Get-Date).ToString("o")
+        ProjectRoot = $ProjectRoot
+        FrontendUrl = "http://127.0.0.1:$WebPort/"
+        ApiUrl = "http://127.0.0.1:$ApiPort"
+        ApiPort = [int]$ApiPort
+        WebPort = [int]$WebPort
+        RedisPort = if ($useRedis -and -not $useExternalRedis) { [int]$RedisPort } else { $null }
+        RedisUrl = if ($env:REDIS_URL) { $env:REDIS_URL } else { "" }
+        UseExternalRedis = [bool]$useExternalRedis
+        PreferRandomPorts = [bool]$PreferRandomPorts
+        ApiPidFile = $ApiPidFile
+        WebPidFile = $WebPidFile
+        RedisPidFile = $redisPidFile
+    })
 
     # API Server
     # Env vars are loaded into this process (line 42-53) and inherited by Start-Job.
     # No --env-file needed - avoids depending on Node's --env-file support here.
     Write-Host "  Starting API Server (port $ApiPort)..."
     $apiJob = Start-Job -Name "api" -ScriptBlock {
-        param($root, $envFile, $runtimeEnvOverrides, $apiEntry)
+        param($root, $envFile, $runtimeEnvOverrides, $apiEntry, $nodeCommand)
         Set-Location (Join-Path $root "packages/api")
         # Load .env into job process (Start-Job inherits parent env,
         # but re-load to be safe if process env was not fully propagated)
@@ -366,8 +510,8 @@ try {
                 [System.Environment]::SetEnvironmentVariable($entry.Key, [string]$entry.Value, "Process")
             }
         }
-        & node $apiEntry 2>&1
-    } -ArgumentList $ProjectRoot, $envFile, $runtimeEnvOverrides, $apiEntry
+        & $nodeCommand $apiEntry 2>&1
+    } -ArgumentList $ProjectRoot, $envFile, $runtimeEnvOverrides, $apiEntry, $nodeCommand
     $jobs += $apiJob
 
     Start-Sleep -Seconds 2
@@ -377,19 +521,19 @@ try {
         # Development mode: next dev (hot reload)
         Write-Host "  Starting Frontend (port $WebPort, dev)..."
         $webJob = Start-Job -Name "web" -ScriptBlock {
-            param($root, $port, $nextCli)
+            param($root, $port, $nextCli, $nodeCommand)
             $env:PORT = $port
             $env:NEXT_IGNORE_INCORRECT_LOCKFILE = "1"
-            & node $nextCli dev (Join-Path $root "packages/web") -p $port 2>&1
-        } -ArgumentList $ProjectRoot, $WebPort, $nextCli
+            & $nodeCommand $nextCli dev (Join-Path $root "packages/web") -p $port 2>&1
+        } -ArgumentList $ProjectRoot, $WebPort, $nextCli, $nodeCommand
     } else {
         # Production mode: next start (default - avoids #105 issues)
         Write-Host "  Starting Frontend (port $WebPort, production)..."
         $webJob = Start-Job -Name "web" -ScriptBlock {
-            param($root, $port, $nextCli)
+            param($root, $port, $nextCli, $nodeCommand)
             $env:PORT = $port
-            & node $nextCli start (Join-Path $root "packages/web") -p $port -H 0.0.0.0 2>&1
-        } -ArgumentList $ProjectRoot, $WebPort, $nextCli
+            & $nodeCommand $nextCli start (Join-Path $root "packages/web") -p $port -H 0.0.0.0 2>&1
+        } -ArgumentList $ProjectRoot, $WebPort, $nextCli, $nodeCommand
     }
     $jobs += $webJob
 
@@ -449,6 +593,7 @@ try {
     }
     Clear-ManagedProcessId -PidFile $ApiPidFile
     Clear-ManagedProcessId -PidFile $WebPidFile
+    Remove-WindowsRuntimeStateFile -StateFile $RuntimeStateFile
 
     if ($startedRedis) {
         try {

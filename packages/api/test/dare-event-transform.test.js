@@ -157,15 +157,13 @@ describe('transformDareEvent', () => {
   });
 
   // ── approval events ──
-  test('maps approval.pending → system_info', () => {
+  test('returns null for approval.pending transient event', () => {
     const event = envelope('approval.pending', {
       tool_name: 'shell',
       risk_level: 2,
     });
     const result = transformDareEvent(event, catId);
-    assert.ok(result);
-    assert.strictEqual(result.type, 'system_info');
-    assert.ok(result.content?.includes('approval'));
+    assert.strictEqual(result, null);
   });
 
   // ── filtering ──

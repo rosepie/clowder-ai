@@ -1,0 +1,19 @@
+anthropic
+langchain-openai
+langchain-core
+pytest
+pytest-asyncio
+
+# MCP transport dependencies:
+httpx>=0.27.0
+
+# A2A server (HTTP + JSON-RPC):
+starlette>=0.37.0
+uvicorn>=0.30.0
+
+# Optional dependencies:
+# mcp              # Official MCP Python SDK (for advanced usage)
+# pyyaml           # For YAML config file support
+
+# Vector knowledge (ChromaDB store):
+chromadb>=0.4.0

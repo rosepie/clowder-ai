@@ -1,9 +1,13 @@
 import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { describe, it } from 'node:test';
 
 const { RelayClawAgentService, __relayClawInternals } = await import(
   '../dist/domains/cats/services/agents/providers/RelayClawAgentService.js'
 );
+const { jiuwenClawBundleAvailable, resolveJiuwenClawPythonBin } = await import('../dist/utils/jiuwenclaw-paths.js');
 
 function createConnectionFactory(onSend) {
   return (requestQueues) => ({
@@ -19,6 +23,43 @@ function createConnectionFactory(onSend) {
 }
 
 describe('RelayClawAgentService', () => {
+  it('resolves vendored jiuwenclaw venv python on Windows-style paths', () => {
+    const appDir = mkdtempSync(join(tmpdir(), 'jiuwenclaw-paths-'));
+    const pythonBin =
+      process.platform === 'win32'
+        ? join(appDir, '.venv', 'Scripts', 'python.exe')
+        : join(appDir, '.venv', 'bin', 'python');
+    mkdirSync(dirname(pythonBin), { recursive: true });
+    writeFileSync(pythonBin, '');
+
+    assert.equal(resolveJiuwenClawPythonBin(undefined, appDir), pythonBin);
+  });
+
+  it('marks jiuwenclaw bundle available when app dir and venv python are present', () => {
+    const appDir = mkdtempSync(join(tmpdir(), 'jiuwenclaw-bundle-'));
+    const appPy = join(appDir, 'jiuwenclaw', 'app.py');
+    const pythonBin =
+      process.platform === 'win32'
+        ? join(appDir, '.venv', 'Scripts', 'python.exe')
+        : join(appDir, '.venv', 'bin', 'python');
+    mkdirSync(dirname(appPy), { recursive: true });
+    mkdirSync(dirname(pythonBin), { recursive: true });
+    writeFileSync(appPy, '');
+    writeFileSync(pythonBin, '');
+
+    const previousAppDir = process.env.CAT_CAFE_RELAYCLAW_APP_DIR;
+    try {
+      process.env.CAT_CAFE_RELAYCLAW_APP_DIR = appDir;
+      assert.equal(jiuwenClawBundleAvailable(), true);
+    } finally {
+      if (previousAppDir === undefined) {
+        delete process.env.CAT_CAFE_RELAYCLAW_APP_DIR;
+      } else {
+        process.env.CAT_CAFE_RELAYCLAW_APP_DIR = previousAppDir;
+      }
+    }
+  });
+
   it('emits final text when the stream only returns chat.final content', async () => {
     const service = new RelayClawAgentService(
       {
@@ -108,23 +149,27 @@ describe('RelayClawAgentService', () => {
 
     assert.ok(capturedRequest);
     assert.equal(capturedRequest.params.project_dir, '/usr/code/cat-cafe-runtime');
+    const expectedUploadPath =
+      process.platform === 'win32' ? 'D:\\tmp\\cat-cafe-uploads\\test-image.png' : '/tmp/cat-cafe-uploads/test-image.png';
     assert.deepEqual(capturedRequest.params.files, {
       uploaded: [
         {
           type: 'image',
           name: 'test-image.png',
-          path: '/tmp/cat-cafe-uploads/test-image.png',
+          path: expectedUploadPath,
         },
       ],
     });
     assert.equal(capturedRequest.params.cat_cafe_mcp.command, 'node');
     assert.ok(Array.isArray(capturedRequest.params.cat_cafe_mcp.args));
+    const normalizedMcpPath = String(capturedRequest.params.cat_cafe_mcp.args[0]).replaceAll('\\', '/');
     assert.ok(
-      capturedRequest.params.cat_cafe_mcp.args[0].endsWith('/packages/mcp-server/dist/index.js'),
+      normalizedMcpPath.endsWith('/packages/mcp-server/dist/index.js'),
       'cat-cafe MCP should point at the local MCP server bundle',
     );
     assert.equal(capturedRequest.params.cat_cafe_mcp.env.CAT_CAFE_INVOCATION_ID, 'invocation-123');
-    assert.match(capturedRequest.params.query, /\[Local image path: \/tmp\/cat-cafe-uploads\/test-image\.png\]/);
+    const normalizedQuery = String(capturedRequest.params.query).replaceAll('\\', '/');
+    assert.match(normalizedQuery, /\[Local image path: D:\/tmp\/cat-cafe-uploads\/test-image\.png\]|\[Local image path: \/tmp\/cat-cafe-uploads\/test-image\.png\]/);
   });
 
   it('yields error before done when the provider times out', async () => {

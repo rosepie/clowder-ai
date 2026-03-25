@@ -28,13 +28,35 @@ export function resolveJiuwenClawPythonBin(explicitPython?: string, appDir?: str
   if (configured) return configured;
 
   const resolvedAppDir = resolveJiuwenClawAppDir(appDir);
-  const vendoredCandidate = join(resolvedAppDir, '.venv', 'bin', 'python');
-  if (existsSync(vendoredCandidate)) return vendoredCandidate;
+  const localCandidates =
+    process.platform === 'win32'
+      ? [
+          join(resolvedAppDir, '.venv', 'Scripts', 'python.exe'),
+          join(resolvedAppDir, '.venv', 'bin', 'python'),
+        ]
+      : [
+          join(resolvedAppDir, '.venv', 'bin', 'python'),
+          join(resolvedAppDir, '.venv', 'Scripts', 'python.exe'),
+        ];
+  for (const candidate of localCandidates) {
+    if (existsSync(candidate)) return candidate;
+  }
 
-  const legacyCandidate = join(LEGACY_JIUWENCLAW_APP_DIR, '.venv', 'bin', 'python');
-  if (existsSync(legacyCandidate)) return legacyCandidate;
+  const legacyCandidates =
+    process.platform === 'win32'
+      ? [
+          join(LEGACY_JIUWENCLAW_APP_DIR, '.venv', 'Scripts', 'python.exe'),
+          join(LEGACY_JIUWENCLAW_APP_DIR, '.venv', 'bin', 'python'),
+        ]
+      : [
+          join(LEGACY_JIUWENCLAW_APP_DIR, '.venv', 'bin', 'python'),
+          join(LEGACY_JIUWENCLAW_APP_DIR, '.venv', 'Scripts', 'python.exe'),
+        ];
+  for (const candidate of legacyCandidates) {
+    if (existsSync(candidate)) return candidate;
+  }
 
-  return vendoredCandidate;
+  return localCandidates[0];
 }
 
 export function jiuwenClawBundleAvailable(): boolean {

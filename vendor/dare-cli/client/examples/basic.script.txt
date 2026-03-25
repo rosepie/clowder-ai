@@ -1,0 +1,10 @@
+# Switch to plan mode for an approval-gated flow.
+/mode plan
+
+# Natural language lines are treated as tasks.
+读取 README 并总结当前工程模块结构
+
+# Approve and execute the pending plan.
+/approve
+/status
+/quit
