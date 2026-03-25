@@ -1,5 +1,11 @@
-export function appendThinkingChunk(existing: string, chunk: string): string {
+export type ThinkingChunkMergeStrategy = 'append' | 'paragraph';
+
+export function appendThinkingChunk(
+  existing: string,
+  chunk: string,
+  strategy: ThinkingChunkMergeStrategy = 'paragraph',
+): string {
   if (!existing) return chunk;
   if (!chunk) return existing;
-  return `${existing}${chunk}`;
+  return strategy === 'append' ? `${existing}${chunk}` : `${existing}\n\n---\n\n${chunk}`;
 }

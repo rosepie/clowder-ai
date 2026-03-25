@@ -78,7 +78,6 @@ export class ACPStdioClient {
   private readonly options: ACPStdioClientOptions;
   private readonly notifications = new ACPAsyncQueue();
   private readonly pending = new Map<number, PendingRequest>();
-  private readonly stdoutChunks: Buffer[] = [];
   private readonly stderrChunks: string[] = [];
   private stdoutBuffer = Buffer.alloc(0);
   private nextId = 0;
@@ -121,7 +120,6 @@ export class ACPStdioClient {
     });
 
     child.stdout?.on('data', (chunk: Buffer) => {
-      this.stdoutChunks.push(chunk);
       this.processStdoutChunk(chunk);
     });
     child.stderr?.on('data', (chunk: Buffer) => {

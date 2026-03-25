@@ -356,8 +356,14 @@ function normalizeProfile(profile: ProviderProfileMeta): ProviderProfileMeta {
   const normalizedArgs = normalizeStringList(profile.args);
   const normalizedModelAccessMode = normalizeAcpModelAccessMode(profile.modelAccessMode);
   const normalizedDefaultModelProfileRef = profile.defaultModelProfileRef?.trim();
-  const isAcpProfile =
-    profile.kind === 'acp' || profile.authType === 'none' || normalizedProtocol === 'acp' || Boolean(normalizedCommand);
+  const hasAcpSpecificFields = normalizedModelAccessMode !== undefined || Boolean(normalizedDefaultModelProfileRef);
+  // Prefer explicit kind. The legacy fallbacks are kept narrowly scoped for older ACP records
+  // that predate `kind: "acp"` normalization.
+  const isLegacyAcpProfile =
+    normalizedProtocol === 'acp' ||
+    (profile.authType === 'none' && (Boolean(normalizedCommand) || hasAcpSpecificFields)) ||
+    (Boolean(normalizedCommand) && hasAcpSpecificFields);
+  const isAcpProfile = profile.kind === 'acp' || isLegacyAcpProfile;
 
   if (isAcpProfile) {
     if (!normalizedCommand) {

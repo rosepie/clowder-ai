@@ -2,12 +2,17 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 describe('appendThinkingChunk', () => {
-  it('concatenates streaming thinking chunks without markdown separators', async () => {
+  it('uses paragraph separators for non-streaming thinking blocks', async () => {
+    const { appendThinkingChunk } = await import('../dist/domains/cats/services/agents/routing/thinking-chunk-merge.js');
+    assert.equal(appendThinkingChunk('step one', 'step two'), 'step one\n\n---\n\nstep two');
+  });
+
+  it('concatenates streaming thinking chunks when mergeStrategy=append', async () => {
     const { appendThinkingChunk } = await import('../dist/domains/cats/services/agents/routing/thinking-chunk-merge.js');
     let thinking = '';
-    thinking = appendThinkingChunk(thinking, 'The');
-    thinking = appendThinkingChunk(thinking, ' user');
-    thinking = appendThinkingChunk(thinking, ' asked.');
+    thinking = appendThinkingChunk(thinking, 'The', 'append');
+    thinking = appendThinkingChunk(thinking, ' user', 'append');
+    thinking = appendThinkingChunk(thinking, ' asked.', 'append');
     assert.equal(thinking, 'The user asked.');
   });
 

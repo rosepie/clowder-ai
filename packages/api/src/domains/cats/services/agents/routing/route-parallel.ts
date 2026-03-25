@@ -336,7 +336,8 @@ export async function* routeParallel(
         const parsed = JSON.parse(msg.content);
         if (parsed.type === 'thinking' && typeof parsed.text === 'string') {
           const prev = catThinking.get(msg.catId) ?? '';
-          catThinking.set(msg.catId, appendThinkingChunk(prev, parsed.text));
+          const mergeStrategy = parsed.mergeStrategy === 'append' ? 'append' : 'paragraph';
+          catThinking.set(msg.catId, appendThinkingChunk(prev, parsed.text, mergeStrategy));
         }
         // F060: Collect inline rich_block for persistence (P1 fix)
         if (parsed.type === 'rich_block' && parsed.block && isValidRichBlock(parsed.block)) {

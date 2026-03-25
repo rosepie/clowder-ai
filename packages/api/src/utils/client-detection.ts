@@ -45,6 +45,11 @@ function commandExists(command: string): Promise<boolean> {
   });
 }
 
+async function acpRuntimeAvailable(): Promise<boolean> {
+  const checks = await Promise.all([commandExists('uv'), commandExists('agent-teams')]);
+  return checks.some(Boolean);
+}
+
 function relayClawSidecarAvailable(): boolean {
   return jiuwenClawBundleAvailable();
 }
@@ -54,7 +59,11 @@ export async function detectAvailableClients(): Promise<AvailableClient[]> {
   const results = await Promise.all(
     CLIENT_COMMAND_MAP.map(async (info) => {
       const available =
-        info.id === 'relayclaw' ? relayClawSidecarAvailable() : info.id === 'acp' ? true : await commandExists(info.command);
+        info.id === 'relayclaw'
+          ? relayClawSidecarAvailable()
+          : info.id === 'acp'
+            ? await acpRuntimeAvailable()
+            : await commandExists(info.command);
       return {
         id: info.id,
         label: info.label,

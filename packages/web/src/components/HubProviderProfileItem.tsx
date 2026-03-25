@@ -6,12 +6,6 @@ import type { AcpModelAccessMode, AcpModelProfileItem, ProfileItem } from './hub
 import { TagEditor, TagPillList } from './hub-tag-editor';
 import { useConfirm } from './useConfirm';
 
-const PROTOCOL_OPTIONS: Array<{ value: ApiProtocol; label: string }> = [
-  { value: 'anthropic', label: 'Anthropic' },
-  { value: 'openai', label: 'OpenAI' },
-  { value: 'google', label: 'Google' },
-];
-
 const ACP_MODEL_ACCESS_OPTIONS: Array<{ value: AcpModelAccessMode; label: string }> = [
   { value: 'self_managed', label: 'Agent Teams 自管' },
   { value: 'clowder_default_profile', label: 'Clowder 下发 default' },

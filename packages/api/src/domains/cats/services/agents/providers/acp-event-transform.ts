@@ -55,7 +55,7 @@ export function transformACPUpdate(
             {
               type: 'system_info',
               catId,
-              content: JSON.stringify({ type: 'thinking', catId, text }),
+              content: JSON.stringify({ type: 'thinking', catId, text, mergeStrategy: 'append' }),
               timestamp: Date.now(),
             },
           ]

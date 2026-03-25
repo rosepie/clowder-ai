@@ -14,6 +14,10 @@ export interface ACPAgentServiceOptions {
   catId?: CatId;
 }
 
+const ACP_ALWAYS_BLOCKED_ENV_PREFIXES = ['AWS_', 'CAT_CAFE_', 'DATABASE_', 'GITHUB_', 'POSTGRES_', 'REDIS_'];
+const ACP_MODEL_CREDENTIAL_ENV_PREFIXES = ['ANTHROPIC_', 'DARE_', 'GEMINI_', 'GOOGLE_', 'OPENAI_', 'OPENROUTER_'];
+const ACP_ALWAYS_BLOCKED_ENV_KEYS = new Set(['DATABASE_URL', 'GITHUB_MCP_PAT', 'GITHUB_TOKEN', 'REDIS_URL']);
+
 function doneMessage(catId: CatId, sessionId: string | undefined): AgentMessage {
   return {
     type: 'done',
@@ -52,6 +56,21 @@ function buildAcpMcpServers(options?: AgentServiceOptions): Array<Record<string,
       ...catCafeMcp,
     },
   ];
+}
+
+function buildACPSubprocessEnv(providerProfile: RuntimeProviderProfile): NodeJS.ProcessEnv {
+  const blockedPrefixes =
+    providerProfile.modelAccessMode === 'clowder_default_profile'
+      ? [...ACP_ALWAYS_BLOCKED_ENV_PREFIXES, ...ACP_MODEL_CREDENTIAL_ENV_PREFIXES]
+      : ACP_ALWAYS_BLOCKED_ENV_PREFIXES;
+  const env: NodeJS.ProcessEnv = {};
+  for (const [key, value] of Object.entries(process.env)) {
+    if (typeof value !== 'string') continue;
+    if (ACP_ALWAYS_BLOCKED_ENV_KEYS.has(key)) continue;
+    if (blockedPrefixes.some((prefix) => key.startsWith(prefix))) continue;
+    env[key] = value;
+  }
+  return env;
 }
 
 function buildSessionParams(
@@ -110,7 +129,7 @@ export async function runACPProviderProbe(input: {
     command: providerProfile.command,
     args: providerProfile.args,
     cwd: providerProfile.cwd,
-    env: process.env,
+    env: buildACPSubprocessEnv(providerProfile),
   });
   try {
     await client.start();
@@ -159,7 +178,7 @@ export class ACPAgentService implements AgentService {
       command: providerProfile.command,
       args: providerProfile.args,
       cwd: providerProfile.cwd,
-      env: process.env,
+      env: buildACPSubprocessEnv(providerProfile),
     });
     let sessionId = options?.sessionId;
     let aborted = false;
