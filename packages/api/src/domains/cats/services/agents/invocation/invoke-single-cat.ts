@@ -422,10 +422,15 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
 
   try {
     let sessionId: string | undefined;
-    try {
-      sessionId = await sessionManager.get(userId, catId, threadId);
-    } catch {
-      // Redis read failure — continue without session
+    const sessionChainActive = isSessionChainEnabled(catId);
+    // Cats with sessionChain=false (e.g. dare) intentionally start fresh each turn.
+    // Skip sessionManager lookup entirely to avoid resuming stale sessions.
+    if (sessionChainActive) {
+      try {
+        sessionId = await sessionManager.get(userId, catId, threadId);
+      } catch {
+        // Redis read failure — continue without session
+      }
     }
 
     // R8 P1: Read-side short-circuit — if sessionChainStore has sealed/sealing sessions
@@ -441,7 +446,6 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // F33-fix: Always check chain even when sessionManager returns nothing.
     // The PATCH bind endpoint writes to sessionChainStore but not sessionManager,
     // so a freshly-bound session would be missed if we gate on sessionId being truthy.
-    const sessionChainActive = isSessionChainEnabled(catId);
     if (deps.sessionChainStore && sessionChainActive) {
       // Reaper: reconcile any sessions stuck in 'sealing' > 5 minutes (best-effort).
       if (deps.sessionSealer) {
