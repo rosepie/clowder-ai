@@ -1,13 +1,15 @@
 import { createModuleLogger } from '../infrastructure/logger.js';
+import type { PuppeteerNode } from 'puppeteer-core';
+import type sharpType from 'sharp';
 
 const log = createModuleLogger('image-exporter');
 
 // puppeteer and sharp are optional — screenshot export degrades gracefully
-let puppeteerMod: typeof import('puppeteer') | null = null;
-let sharpMod: typeof import('sharp') | null = null;
+let puppeteer: PuppeteerNode | null = null;
+let sharp: typeof sharpType | null = null;
 try {
-  puppeteerMod = await import('puppeteer');
-  sharpMod = await import('sharp');
+  puppeteer = (await import('puppeteer')).default as unknown as PuppeteerNode;
+  sharp = (await import('sharp')).default as unknown as typeof sharpType;
 } catch {
   log.warn('puppeteer/sharp not available — ImageExporter disabled');
 }
@@ -26,11 +28,9 @@ export class ImageExporter {
   private browser: any = null;
 
   async capture(url: string, userId: string): Promise<Buffer> {
-    if (!puppeteerMod || !sharpMod) {
+    if (!puppeteer || !sharp) {
       throw new Error('ImageExporter requires puppeteer and sharp — install them with: pnpm add puppeteer sharp');
     }
-    const puppeteer = puppeteerMod.default;
-    const sharp = sharpMod.default;
     try {
       if (!this.browser) {
         this.browser = await puppeteer.launch({

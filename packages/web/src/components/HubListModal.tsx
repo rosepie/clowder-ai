@@ -59,6 +59,15 @@ export function HubListModal({ open, onClose, currentThreadId }: HubListModalPro
     }
   }, [open, fetchHubThreads]);
 
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open, onClose]);
+
   if (!open) return null;
 
   const handleNavigate = (threadId: string) => {
@@ -76,9 +85,6 @@ export function HubListModal({ open, onClose, currentThreadId }: HubListModalPro
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/40"
-      onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
-      }}
       data-testid="hub-list-modal"
     >
       <div className="bg-white rounded-2xl shadow-xl w-[520px] max-h-[80vh] flex flex-col overflow-hidden">

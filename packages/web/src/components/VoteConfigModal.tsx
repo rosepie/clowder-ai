@@ -62,13 +62,9 @@ export function VoteConfigModal({
   }, [onCancel]);
 
   return (
-    // biome-ignore lint/a11y/noStaticElementInteractions: modal backdrop click-to-close
     <div
       role="presentation"
       className="fixed inset-0 bg-black/30 flex items-center justify-center z-50"
-      onClick={(e) => {
-        if (modalRef.current && !modalRef.current.contains(e.target as Node)) onCancel();
-      }}
     >
       <div
         ref={modalRef}
