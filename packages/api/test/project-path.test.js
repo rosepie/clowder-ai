@@ -91,6 +91,11 @@ describe('denylist mode (default, no PROJECT_ALLOWED_ROOTS)', () => {
     assert.strictEqual(isUnderAllowedRoot('/run/user/1000'), false);
   });
 
+  it('rejects /etc (system config, also gates write paths)', () => {
+    assert.strictEqual(isUnderAllowedRoot('/etc/passwd'), false);
+    assert.strictEqual(isUnderAllowedRoot('/etc'), false);
+  });
+
   it('rejects filesystem root /', () => {
     assert.strictEqual(isUnderAllowedRoot('/'), false);
   });
@@ -151,12 +156,15 @@ describe('getDefaultDenylistForPlatform', () => {
     assert.ok(deny.includes('/boot'));
     assert.ok(deny.includes('/sbin'));
     assert.ok(deny.includes('/run'));
+    assert.ok(deny.includes('/etc'));
   });
 
-  it('macOS denylist includes /System', () => {
+  it('macOS denylist includes /System and /private/etc', () => {
     const deny = getDefaultDenylistForPlatform('darwin');
     assert.ok(deny.includes('/dev'));
+    assert.ok(deny.includes('/etc'));
     assert.ok(deny.includes('/System'));
+    assert.ok(deny.includes('/private/etc'));
   });
 
   it('Windows denylist includes system root', () => {
@@ -216,6 +224,12 @@ describe('validateProjectPath', () => {
 
   it('returns null for path under denied root', async () => {
     const result = await validateProjectPath('/proc');
+    assert.strictEqual(result, null);
+  });
+
+  it('returns null for /etc (denied, even though it exists)', async () => {
+    // On macOS /etc → /private/etc; both must be denied
+    const result = await validateProjectPath('/etc');
     assert.strictEqual(result, null);
   });
 
@@ -299,11 +313,15 @@ describe('PROJECT_ALLOWED_ROOTS env var (legacy allowlist mode)', () => {
     assert.strictEqual(isUnderAllowedRoot('/tmp/foo'), true);
   });
 
-  it('falls back to denylist mode when env var is empty', () => {
+  it('uses legacy allowlist defaults when env var is empty (backward compat)', () => {
     process.env.PROJECT_ALLOWED_ROOTS = '';
     delete process.env.PROJECT_ALLOWED_ROOTS_APPEND;
-    assert.strictEqual(isDenylistMode(), true);
+    // Empty string is still "defined" → allowlist mode, not denylist
+    assert.strictEqual(isDenylistMode(), false);
+    // Home is in legacy defaults, so still allowed
     assert.strictEqual(isUnderAllowedRoot(join(homedir(), 'projects')), true);
+    // /opt is NOT in legacy defaults → should be rejected
+    assert.strictEqual(isUnderAllowedRoot('/opt/projects'), false);
   });
 
   it('handles multiple colon-separated paths', () => {

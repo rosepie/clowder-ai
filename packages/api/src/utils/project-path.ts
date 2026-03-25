@@ -18,6 +18,10 @@ import { delimiter, relative, resolve, sep, win32 } from 'node:path';
 /**
  * System directories that should never be used as project roots.
  * These are virtual/kernel/boot/system directories — not project locations.
+ *
+ * NOTE: This denylist gates not just browsing but also write paths
+ * (capabilities.ts, governance-bootstrap.ts write config into the
+ * validated projectRoot). Keep it conservative.
  */
 export function getDefaultDenylistForPlatform(platformName = platform()): string[] {
   if (platformName === 'win32') {
@@ -25,11 +29,14 @@ export function getDefaultDenylistForPlatform(platformName = platform()): string
     return [systemRoot];
   }
 
-  // POSIX: kernel/device/boot directories
-  const deny = ['/proc', '/sys', '/dev', '/boot', '/sbin', '/run'];
+  // POSIX: kernel/device/boot/system-config directories
+  const deny = ['/proc', '/sys', '/dev', '/boot', '/sbin', '/run', '/etc'];
 
   if (platformName === 'darwin') {
     deny.push('/System');
+    // macOS: /etc → /private/etc via symlink; realpath() resolves it,
+    // so we must deny the resolved form too.
+    deny.push('/private/etc');
   }
 
   return deny;
@@ -101,12 +108,20 @@ const DEFAULT_ROOTS = (): string[] => {
 
 const ALLOWED_ROOTS = (): string[] | null => {
   const envRoots = process.env.PROJECT_ALLOWED_ROOTS;
-  if (envRoots?.trim()) {
-    const custom = envRoots.split(delimiter).filter(Boolean);
-    const append = process.env.PROJECT_ALLOWED_ROOTS_APPEND === 'true';
-    return append ? [...new Set([...DEFAULT_ROOTS(), ...custom])] : custom;
+  // Env var defined (even if empty) → allowlist mode for backward compat.
+  // Only truly undefined → denylist mode.
+  // Reason: many .env templates export PROJECT_ALLOWED_ROOTS= (empty);
+  // silently switching them to denylist would widen access on upgrade.
+  if (envRoots !== undefined) {
+    if (envRoots.trim()) {
+      const custom = envRoots.split(delimiter).filter(Boolean);
+      const append = process.env.PROJECT_ALLOWED_ROOTS_APPEND === 'true';
+      return append ? [...new Set([...DEFAULT_ROOTS(), ...custom])] : custom;
+    }
+    // Defined but empty → legacy allowlist defaults
+    return DEFAULT_ROOTS();
   }
-  // No env var → null signals "use denylist mode"
+  // Not defined at all → denylist mode
   return null;
 };
 
