@@ -12,6 +12,7 @@ const {
   getDefaultDeniedRoots,
   isPathUnderRoots,
   isDenylistMode,
+  pathsEqual,
 } = await import('../dist/utils/project-path.js');
 
 describe('denylist mode (default)', () => {
@@ -194,5 +195,29 @@ describe('PROJECT_ALLOWED_ROOTS legacy mode', () => {
     process.env.PROJECT_ALLOWED_ROOTS = '';
     assert.strictEqual(isDenylistMode(), true);
     assert.strictEqual(isUnderAllowedRoot(join(homedir(), 'projects')), true);
+  });
+});
+
+describe('pathsEqual', () => {
+  it('exact match on non-Windows platforms', () => {
+    assert.strictEqual(pathsEqual('/a/b', '/a/b', 'linux'), true);
+    assert.strictEqual(pathsEqual('/a/b', '/A/B', 'linux'), false);
+    assert.strictEqual(pathsEqual('/a/b', '/a/b', 'darwin'), true);
+    assert.strictEqual(pathsEqual('/a/b', '/A/B', 'darwin'), false);
+  });
+
+  it('case-insensitive match on win32', () => {
+    assert.strictEqual(pathsEqual('C:\\Users\\Dev\\Project', 'C:\\users\\dev\\project', 'win32'), true);
+    assert.strictEqual(pathsEqual('C:\\Users\\Dev\\Project', 'C:\\USERS\\DEV\\PROJECT', 'win32'), true);
+  });
+
+  it('different paths never match regardless of platform', () => {
+    assert.strictEqual(pathsEqual('/a/b', '/a/c', 'linux'), false);
+    assert.strictEqual(pathsEqual('C:\\a\\b', 'C:\\a\\c', 'win32'), false);
+  });
+
+  it('empty strings match', () => {
+    assert.strictEqual(pathsEqual('', '', 'linux'), true);
+    assert.strictEqual(pathsEqual('', '', 'win32'), true);
   });
 });

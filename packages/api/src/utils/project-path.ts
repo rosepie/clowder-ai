@@ -150,3 +150,13 @@ export function getDefaultRootsForPlatform(platformName = platform(), opts?: { h
   }
   return legacyDefaultRoots(platformName);
 }
+
+/**
+ * Cross-platform path equality.
+ * Case-insensitive on Windows (NTFS is case-preserving but case-insensitive).
+ * Accepts optional platformName for testability on non-Windows CI.
+ */
+export function pathsEqual(a: string, b: string, platformName = process.platform): boolean {
+  if (platformName !== 'win32') return a === b;
+  return a.localeCompare(b, undefined, { sensitivity: 'accent' }) === 0;
+}
