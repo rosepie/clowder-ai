@@ -93,6 +93,7 @@ export type {
   CatColor,
   CatConfig,
   CatProvider,
+  KnownCatProvider,
   CatState,
   CatStatus,
 } from './cat.js';
@@ -338,6 +339,17 @@ export type {
   SignalSourceSchedule,
   SignalTier,
 } from './signals.js';
+// SkillHub types (SkillsHub 注册中心集成)
+export type {
+  InstalledSkillInfo,
+  SkillHubInstallRequest,
+  SkillHubInstallResult,
+  SkillHubResolveEntry,
+  SkillHubResolveResponse,
+  SkillHubSearchResponse,
+  SkillHubSkill,
+  SkillHubUninstallRequest,
+} from './skillhub.js';
 // Slice types (F076 Phase 2 — 切片)
 export type {
   CreateSliceInput,

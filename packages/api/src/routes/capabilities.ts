@@ -37,8 +37,10 @@ import {
   migrateLegacyCatCafeCapability,
   readCapabilitiesConfig,
   resolveServersForCat,
+  toCapabilityEntry,
   writeCapabilitiesConfig,
 } from '../config/capabilities/capability-orchestrator.js';
+import { loadInstalledRegistry } from '../domains/cats/services/skillhub/InstalledSkillRegistry.js';
 import { validateProjectPath } from '../utils/project-path.js';
 import { resolveUserId } from '../utils/request-identity.js';
 import { type McpProbeResult, probeMcpCapability } from './mcp-probe.js';
@@ -497,6 +499,8 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
     };
 
     // 3. Sync discovered skills into capabilities.json
+    const installedRegistry = await loadInstalledRegistry(dirname(CAT_CAFE_SKILLS_SRC));
+    const remoteInstalledNames = new Set(installedRegistry.skills.map((s) => s.name));
     const allSkillNames = new Set<string>();
     for (const skills of Object.values(providerSkills)) {
       for (const s of skills) allSkillNames.add(s);
@@ -513,7 +517,11 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
       const exists = config.capabilities.some((c) => c.type === 'skill' && c.id === skillName);
       if (!exists) {
         // F041 re-open fix: project-level skills → 'cat-cafe', user-level → 'external'
-        const source = projectSkillNames.has(skillName) ? ('cat-cafe' as const) : ('external' as const);
+        const source = remoteInstalledNames.has(skillName)
+          ? ('external' as const)
+          : projectSkillNames.has(skillName)
+            ? ('cat-cafe' as const)
+            : ('external' as const);
         config.capabilities.push({
           id: skillName,
           type: 'skill',
@@ -524,10 +532,17 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
       }
     }
     // Also fix source for existing skills that were incorrectly classified
+    // Remote-installed skills should always be 'external'
     for (const cap of config.capabilities) {
       if (cap.type !== 'skill') continue;
+      if (remoteInstalledNames.has(cap.id)) {
+        if (cap.source !== 'external') {
+          cap.source = 'external';
+          configDirty = true;
+        }
+        continue;
+      }
       const shouldBeCatCafe = projectSkillNames.has(cap.id);
-      // Upgrade is safe when we have evidence; downgrade is only safe when cat-cafe-skills scan succeeded.
       if (shouldBeCatCafe && cap.source !== 'cat-cafe') {
         cap.source = 'cat-cafe';
         configDirty = true;
@@ -549,32 +564,44 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
       if (config.capabilities.length !== before) configDirty = true;
     }
 
-    // F041 bug fix: Discover user-level MCP servers (not just project-level).
-    // e.g. ~/.codex/config.toml has pencil, playwright, MCP_DOCKER etc.
-    // Skip URL-based servers (command='') — TD104 gap.
+    // Re-discover project-level + user-level MCP servers on each GET.
+    // Adds newly configured servers to capabilities.json without re-bootstrap.
+    const projectLevelPaths = getDiscoveryPaths(projectRoot);
     const userLevelPaths: DiscoveryPaths = {
       claudeConfig: join(home, '.claude', 'mcp.json'),
       codexConfig: join(home, '.codex', 'config.toml'),
       geminiConfig: join(home, '.gemini', 'settings.json'),
     };
-    const userLevelServers = await discoverExternalMcpServers(userLevelPaths);
-    for (const server of userLevelServers) {
-      if (!server.command) continue; // Skip URL-based (TD104)
+    const [projectLevelServers, userLevelServers] = await Promise.all([
+      discoverExternalMcpServers(projectLevelPaths),
+      discoverExternalMcpServers(userLevelPaths),
+    ]);
+    const allDiscoveredServers = [...projectLevelServers, ...userLevelServers];
+    const discoveredByName = new Map<string, (typeof allDiscoveredServers)[number]>();
+    for (const server of allDiscoveredServers) {
+      const existing = discoveredByName.get(server.name);
+      if (!existing) {
+        discoveredByName.set(server.name, server);
+      } else if (existing.transport === 'streamableHttp' && server.transport !== 'streamableHttp') {
+        // Prefer stdio — but only when the stdio entry is actually enabled,
+        // or when the existing streamableHttp entry is disabled anyway.
+        // Prevents a disabled user-level stdio from replacing an enabled project-level HTTP server.
+        if (server.enabled !== false || existing.enabled !== true) {
+          discoveredByName.set(server.name, server);
+        }
+      } else if (existing.enabled === false && server.enabled !== false) {
+        // Same transport: prefer enabled entry over disabled one.
+        discoveredByName.set(server.name, server);
+      }
+    }
+    // Skip legacy Cat Cafe names — a stale 'cat-cafe' entry in user config should
+    // not be re-added alongside the split 'cat-cafe-*' built-in entries.
+    const CAT_CAFE_BUILTIN_NAMES = new Set(['cat-cafe', 'cat-cafe-collab', 'cat-cafe-memory', 'cat-cafe-signals']);
+    for (const server of discoveredByName.values()) {
+      if (CAT_CAFE_BUILTIN_NAMES.has(server.name)) continue;
       const exists = config.capabilities.some((c) => c.type === 'mcp' && c.id === server.name);
       if (!exists) {
-        const mcpServer: { command: string; args: string[]; env?: Record<string, string>; workingDir?: string } = {
-          command: server.command,
-          args: server.args,
-        };
-        if (server.env) mcpServer.env = server.env;
-        if (server.workingDir) mcpServer.workingDir = server.workingDir;
-        config.capabilities.push({
-          id: server.name,
-          type: 'mcp',
-          enabled: server.enabled,
-          source: 'external',
-          mcpServer,
-        });
+        config.capabilities.push(toCapabilityEntry(server));
         configDirty = true;
       }
     }
@@ -668,7 +695,7 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
       if (meta?.description) skillItem.description = meta.description;
       if (meta?.triggers) skillItem.triggers = meta.triggers;
       const category = skillCategoryMap.get(cap.id);
-      if (category) skillItem.category = category;
+      skillItem.category = category ?? (remoteInstalledNames.has(cap.id) ? 'SkillHub' : '未分类');
       items.push(skillItem);
     }
 
@@ -735,9 +762,9 @@ export const capabilitiesRoutes: FastifyPluginAsync = async (app) => {
       }),
     );
 
-    // Registration consistency: BOOTSTRAP.md vs source dir
+    // Registration consistency: BOOTSTRAP.md vs source dir (exclude remote-installed skills)
     const bootstrapNames = new Set(skillCategoryMap.keys());
-    const unregistered = [...mountSourceNames].filter((n) => !bootstrapNames.has(n));
+    const unregistered = [...mountSourceNames].filter((n) => !bootstrapNames.has(n) && !remoteInstalledNames.has(n));
     const phantom = [...bootstrapNames].filter((n) => !mountSourceNames.has(n));
     let allMounted =
       catCafeSkillItems.length > 0 &&
