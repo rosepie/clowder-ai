@@ -15,7 +15,16 @@ import { createCatId } from './ids.js';
  * providers introduced in config don't break older code — unknown values
  * fall through to `default` branches in switch statements.
  */
-export type KnownCatProvider = 'anthropic' | 'openai' | 'google' | 'dare' | 'antigravity' | 'opencode' | 'a2a' | 'relayclaw';
+export type KnownCatProvider =
+  | 'anthropic'
+  | 'openai'
+  | 'google'
+  | 'dare'
+  | 'antigravity'
+  | 'opencode'
+  | 'a2a'
+  | 'relayclaw'
+  | 'acp';
 export type CatProvider = string;
 
 /**

@@ -50,6 +50,7 @@ export async function sessionTranscriptRoutes(
   opts: SessionTranscriptRouteOptions,
 ): Promise<void> {
   const { sessionChainStore, threadStore, transcriptReader } = opts;
+  const canAccessThread = (createdBy: string, userId: string) => createdBy === userId || createdBy === 'system';
 
   // GET /api/sessions/:sessionId/events — Paginated event read (F98: view modes)
   app.get<{
@@ -69,7 +70,7 @@ export async function sessionTranscriptRoutes(
     }
 
     const thread = await threadStore.get(session.threadId);
-    if (!thread || thread.createdBy !== userId) {
+    if (!thread || !canAccessThread(thread.createdBy, userId)) {
       reply.status(403);
       return { error: 'Access denied' };
     }
@@ -139,7 +140,7 @@ export async function sessionTranscriptRoutes(
     }
 
     const thread = await threadStore.get(session.threadId);
-    if (!thread || thread.createdBy !== userId) {
+    if (!thread || !canAccessThread(thread.createdBy, userId)) {
       reply.status(403);
       return { error: 'Access denied' };
     }
@@ -175,7 +176,7 @@ export async function sessionTranscriptRoutes(
     }
 
     const thread = await threadStore.get(session.threadId);
-    if (!thread || thread.createdBy !== userId) {
+    if (!thread || !canAccessThread(thread.createdBy, userId)) {
       reply.status(403);
       return { error: 'Access denied' };
     }
@@ -212,7 +213,7 @@ export async function sessionTranscriptRoutes(
 
     const { threadId } = request.params;
     const thread = await threadStore.get(threadId);
-    if (!thread || thread.createdBy !== userId) {
+    if (!thread || !canAccessThread(thread.createdBy, userId)) {
       reply.status(403);
       return { error: 'Access denied' };
     }

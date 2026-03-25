@@ -59,6 +59,13 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function emptyAcpModelProfilesResponse(projectPath = '/tmp/project'): Response {
+  return jsonResponse({
+    projectPath,
+    profiles: [],
+  });
+}
+
 async function flushEffects() {
   await act(async () => {
     await Promise.resolve();
@@ -124,14 +131,17 @@ describe('CatCafeHub provider profiles tab', () => {
     expect(html).toContain('加载中');
   });
 
-  it('loads global provider profiles without projectPath (global profiles stored in ~/.cat-cafe/)', async () => {
-    // Global profiles are stored in ~/.cat-cafe/ and shared across all projects
-    // No projectPath is needed in the API call
-    let requestedPath = '';
+  it('loads provider profiles for the current thread project when no explicit switcher selection exists', async () => {
+    storeState.currentProjectPath = '/tmp/f127-worktree';
+    const requestedPaths: string[] = [];
     mockApiFetch.mockImplementation((path: string) => {
-      requestedPath = path;
+      requestedPaths.push(path);
+      if (path.startsWith('/api/acp-model-profiles')) {
+        return Promise.resolve(emptyAcpModelProfilesResponse('/tmp/f127-worktree'));
+      }
       return Promise.resolve(
         jsonResponse({
+          projectPath: '/tmp/f127-worktree',
           activeProfileId: null,
           bootstrapBindings: {},
           providers: [],
@@ -144,12 +154,15 @@ describe('CatCafeHub provider profiles tab', () => {
     });
     await flushEffects();
 
-    // Global profiles: no projectPath in URL
-    expect(requestedPath).toBe('/api/provider-profiles');
+    expect(requestedPaths).toContain(`/api/provider-profiles?projectPath=${encodeURIComponent('/tmp/f127-worktree')}`);
+    expect(requestedPaths).toContain(`/api/acp-model-profiles?projectPath=${encodeURIComponent('/tmp/f127-worktree')}`);
   });
 
   it('keeps ragdoll rescue controls out of provider profiles after tab data loads', async () => {
     mockApiFetch.mockImplementation((path: string) => {
+      if (path.startsWith('/api/acp-model-profiles')) {
+        return Promise.resolve(emptyAcpModelProfilesResponse());
+      }
       if (path.startsWith('/api/provider-profiles')) {
         return Promise.resolve(
           jsonResponse({
@@ -246,6 +259,9 @@ describe('CatCafeHub provider profiles tab', () => {
 
   it('does not surface verify or activation controls on provider cards', async () => {
     mockApiFetch.mockImplementation((path: string) => {
+      if (path.startsWith('/api/acp-model-profiles')) {
+        return Promise.resolve(emptyAcpModelProfilesResponse());
+      }
       if (path.startsWith('/api/provider-profiles')) {
         return Promise.resolve(
           jsonResponse({
@@ -300,11 +316,14 @@ describe('CatCafeHub provider profiles tab', () => {
     expect(container.textContent).not.toContain('验证');
     expect(container.textContent).not.toContain('当前默认：');
     expect(container.textContent).not.toContain('默认中');
-    expect(container.textContent).not.toContain('测试');
+    expect(container.textContent).toContain('测试');
   });
 
   it('renders provider cards without binding-scope action buttons', async () => {
     mockApiFetch.mockImplementation((path: string) => {
+      if (path.startsWith('/api/acp-model-profiles')) {
+        return Promise.resolve(emptyAcpModelProfilesResponse());
+      }
       if (path.startsWith('/api/provider-profiles')) {
         return Promise.resolve(
           jsonResponse({
@@ -378,6 +397,9 @@ describe('CatCafeHub provider profiles tab', () => {
 
   it('renders API key creation form inline without protocol or verify controls', async () => {
     mockApiFetch.mockImplementation((path: string) => {
+      if (path.startsWith('/api/acp-model-profiles')) {
+        return Promise.resolve(emptyAcpModelProfilesResponse());
+      }
       if (path.startsWith('/api/provider-profiles')) {
         return Promise.resolve(
           jsonResponse({
@@ -477,11 +499,14 @@ describe('CatCafeHub provider profiles tab', () => {
     const profileList = container.querySelector('[aria-label="Provider Profile List"]');
     expect(profileList?.textContent).not.toContain('Antigravity');
     expect(container.textContent).toContain('可用模型');
-    expect(container.textContent).not.toContain('测试');
+    expect(container.textContent).toContain('测试');
   });
 
   it('creates api-key profile from name, url, api key, and supported models only', async () => {
     mockApiFetch.mockImplementation((path: string, init?: RequestInit) => {
+      if (path.startsWith('/api/acp-model-profiles')) {
+        return Promise.resolve(emptyAcpModelProfilesResponse());
+      }
       if (path === '/api/provider-profiles' && init?.method === 'POST') {
         return Promise.resolve(
           jsonResponse({
@@ -554,10 +579,13 @@ describe('CatCafeHub provider profiles tab', () => {
     expect(container.textContent).toContain('至少添加 1 个模型');
   });
 
-  it('creates api-key profile without projectPath (global profiles stored in ~/.cat-cafe/)', async () => {
-    // Global profiles: no projectPath in POST body
+  it('pins create requests to the resolved projectPath even before the user touches the project switcher', async () => {
+    storeState.currentProjectPath = 'default';
     let createPayload: Record<string, unknown> | null = null;
     mockApiFetch.mockImplementation((path: string, init?: RequestInit) => {
+      if (path.startsWith('/api/acp-model-profiles')) {
+        return Promise.resolve(emptyAcpModelProfilesResponse('/tmp/project-from-get'));
+      }
       if (path === '/api/provider-profiles' && init?.method === 'POST') {
         createPayload = JSON.parse(String(init.body)) as Record<string, unknown>;
         return Promise.resolve(
@@ -572,6 +600,7 @@ describe('CatCafeHub provider profiles tab', () => {
       if (path.startsWith('/api/provider-profiles')) {
         return Promise.resolve(
           jsonResponse({
+            projectPath: '/tmp/project-from-get',
             activeProfileId: null,
             bootstrapBindings: {},
             providers: [
@@ -645,13 +674,15 @@ describe('CatCafeHub provider profiles tab', () => {
     });
     await flushEffects();
 
-    // Global profiles: no projectPath in POST body
     expect(createPayload).not.toBeNull();
-    expect((createPayload as unknown as Record<string, unknown>)?.projectPath).toBeUndefined();
+    expect((createPayload as unknown as Record<string, unknown>)?.projectPath).toBe('/tmp/project-from-get');
   });
 
   it('shows built-in and custom provider cards together without the old filter tabs', async () => {
     mockApiFetch.mockImplementation((path: string) => {
+      if (path.startsWith('/api/acp-model-profiles')) {
+        return Promise.resolve(emptyAcpModelProfilesResponse());
+      }
       if (path.startsWith('/api/provider-profiles')) {
         return Promise.resolve(
           jsonResponse({
@@ -741,8 +772,11 @@ describe('CatCafeHub provider profiles tab', () => {
     ).toHaveLength(1);
   });
 
-  it('does not expose 测试 buttons on provider cards', async () => {
+  it('shows 测试 buttons for custom provider cards only', async () => {
     mockApiFetch.mockImplementation((path: string) => {
+      if (path.startsWith('/api/acp-model-profiles')) {
+        return Promise.resolve(emptyAcpModelProfilesResponse());
+      }
       if (path.startsWith('/api/provider-profiles')) {
         return Promise.resolve(
           jsonResponse({
@@ -792,13 +826,16 @@ describe('CatCafeHub provider profiles tab', () => {
 
     expect(
       Array.from(container.querySelectorAll('button')).filter((button) => button.textContent?.trim() === '测试'),
-    ).toHaveLength(0);
+    ).toHaveLength(1);
     expect(container.textContent).toContain('Codex Sponsor');
   });
 
   it('renders ragdoll rescue section from the dedicated rescue tab', async () => {
     storeState.hubState = { open: true, tab: 'rescue' };
     mockApiFetch.mockImplementation((path: string) => {
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse({ clients: [] }));
+      }
       if (path === '/api/config') {
         return Promise.resolve(
           jsonResponse({ config: { cats: {}, perCatBudgets: {}, a2a: {}, memory: {}, hindsight: {}, governance: {} } }),

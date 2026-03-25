@@ -34,6 +34,7 @@ const ALL_CLIENTS_RESPONSE = {
     { id: 'dare', label: 'Dare', command: 'dare', available: true },
     { id: 'opencode', label: 'OpenCode', command: 'opencode', available: true },
     { id: 'relayclaw', label: 'jiuwenClaw', command: 'jiuwenclaw-app', available: true },
+    { id: 'acp', label: 'ACP', command: 'agent-teams gateway acp stdio', available: true },
     { id: 'antigravity', label: 'Antigravity', command: 'antigravity', available: true },
   ],
 };
@@ -228,6 +229,44 @@ describe('HubCatEditor', () => {
     expect(validateModelFormatForClient('opencode', 'gpt-5.4')).toMatch(/providerId\/modelId/i);
     expect(validateModelFormatForClient('opencode', 'openai/gpt-5.4')).toBeNull();
     expect(validateModelFormatForClient('openai', 'gpt-5.4')).toBeNull();
+  });
+
+  it('filterProfiles returns ACP providers only for ACP client', () => {
+    const profiles: ProfileItem[] = [
+      {
+        id: 'claude',
+        provider: 'claude',
+        displayName: 'Claude (OAuth)',
+        name: 'Claude (OAuth)',
+        authType: 'oauth',
+        kind: 'builtin',
+        builtin: true,
+        mode: 'subscription',
+        protocol: 'anthropic',
+        models: ['claude-opus-4-6'],
+        hasApiKey: false,
+        createdAt: '2026-03-18T00:00:00.000Z',
+        updatedAt: '2026-03-18T00:00:00.000Z',
+      },
+      {
+        id: 'agent-teams-local',
+        provider: 'agent-teams-local',
+        displayName: 'Agent Teams Local',
+        name: 'Agent Teams Local',
+        authType: 'none',
+        kind: 'acp',
+        builtin: false,
+        mode: 'none',
+        protocol: 'acp',
+        command: 'uv',
+        args: ['run'],
+        hasApiKey: false,
+        createdAt: '2026-03-18T00:00:00.000Z',
+        updatedAt: '2026-03-18T00:00:00.000Z',
+      },
+    ];
+
+    expect(filterProfiles('acp', profiles).map((profile) => profile.id)).toEqual(['agent-teams-local']);
   });
 
   it('renders normal member provider/model fields and saves to /api/cats', async () => {

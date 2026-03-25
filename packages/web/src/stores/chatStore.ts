@@ -116,6 +116,12 @@ function persistUiThinkingExpandedByDefault(next: boolean) {
   }
 }
 
+function appendThinkingText(existing: string | undefined, next: string): string {
+  if (!existing) return next;
+  if (!next) return existing;
+  return `${existing}${next}`;
+}
+
 function revokeBlobUrls(messages: ChatMessage[]) {
   for (const msg of messages) {
     if (msg.contentBlocks) {
@@ -930,7 +936,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
   setMessageThinking: (messageId, thinking) =>
     set((state) => ({
       messages: state.messages.map((m) =>
-        m.id === messageId ? { ...m, thinking: m.thinking ? `${m.thinking}\n\n---\n\n${thinking}` : thinking } : m,
+        m.id === messageId ? { ...m, thinking: appendThinkingText(m.thinking, thinking) } : m,
       ),
     })),
 
@@ -1203,7 +1209,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     set((state) =>
       updateThreadMessage(state, threadId, messageId, (m) => ({
         ...m,
-        thinking: m.thinking ? `${m.thinking}\n\n---\n\n${thinking}` : thinking,
+        thinking: appendThinkingText(m.thinking, thinking),
       })),
     ),
 

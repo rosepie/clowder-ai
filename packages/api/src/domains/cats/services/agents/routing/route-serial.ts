@@ -39,6 +39,7 @@ import { resolveDefaultClaudeMcpServerPath } from '../providers/ClaudeAgentServi
 import { getMaxA2ADepth, parseA2AMentions } from '../routing/a2a-mentions.js';
 import { registerWorklist, unregisterWorklist } from '../routing/WorklistRegistry.js';
 import { extractRichFromText, isValidRichBlock } from './rich-block-extract.js';
+import { appendThinkingChunk } from './thinking-chunk-merge.js';
 import type { RouteOptions, RouteStrategyDeps } from './route-helpers.js';
 import {
   assembleIncrementalContext,
@@ -404,7 +405,7 @@ export async function* routeSerial(
           try {
             const parsed = JSON.parse(msg.content);
             if (parsed.type === 'thinking' && typeof parsed.text === 'string') {
-              thinkingContent += (thinkingContent ? '\n\n---\n\n' : '') + parsed.text;
+              thinkingContent = appendThinkingChunk(thinkingContent, parsed.text);
             }
             // F060: Collect inline rich_block for persistence (P1 fix)
             if (parsed.type === 'rich_block' && parsed.block && isValidRichBlock(parsed.block)) {

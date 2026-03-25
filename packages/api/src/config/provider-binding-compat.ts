@@ -42,6 +42,8 @@ function resolveExpectedProtocolForProvider(provider: CatProvider): ProviderProf
       return 'openai';
     case 'google':
       return 'google';
+    case 'acp':
+      return 'acp';
     default:
       if (!KNOWN_PROVIDERS.has(provider)) {
         log.info({ provider }, 'unknown provider — no protocol mapping');
@@ -89,6 +91,13 @@ export function validateRuntimeProviderBinding(
   profile: RuntimeProviderProfile,
   defaultModel?: string | null,
 ): string | null {
+  if (provider === 'acp') {
+    if (profile.kind !== 'acp' || profile.authType !== 'none' || profile.protocol !== 'acp') {
+      return 'client "acp" requires an ACP provider profile';
+    }
+    return null;
+  }
+
   if (provider === 'relayclaw') {
     if (profile.authType !== 'api_key') {
       return 'client "jiuwenClaw" requires an API key provider profile';

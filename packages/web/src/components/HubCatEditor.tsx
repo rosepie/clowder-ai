@@ -78,7 +78,7 @@ export function HubCatEditor({ cat, configCat, draft, open, onClose, onSaved }: 
     [availableProfiles, form.accountRef],
   );
   const modelOptions = useMemo(() => {
-    if (form.client === 'antigravity') return [];
+    if (form.client === 'antigravity' || form.client === 'acp') return [];
     return selectedProfile?.models ?? [];
   }, [form.client, selectedProfile]);
   const showCodexSettings = form.client === 'openai';

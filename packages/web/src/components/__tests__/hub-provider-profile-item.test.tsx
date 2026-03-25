@@ -63,7 +63,7 @@ describe('HubProviderProfileItem', () => {
       createdAt: '2026-03-18T00:00:00.000Z',
       updatedAt: '2026-03-18T00:00:00.000Z',
     };
-    const onSave = vi.fn<(profileId: string, payload: ProfileEditPayload) => Promise<void>>(async () => {});
+    const onSave = vi.fn<(payload: ProfileEditPayload) => Promise<void>>(async () => {});
 
     await act(async () => {
       root.render(<HubProviderProfileItem profile={profile} busy={false} onSave={onSave} onDelete={() => {}} />);
@@ -77,7 +77,7 @@ describe('HubProviderProfileItem', () => {
     });
 
     expect(onSave).toHaveBeenCalledTimes(1);
-    const payload = onSave.mock.calls[0]![1] as ProfileEditPayload;
+    const payload = onSave.mock.calls[0]![0] as ProfileEditPayload;
     expect(payload).toMatchObject({
       displayName: 'Claude API',
       baseUrl: 'https://api.anthropic.com',
@@ -103,7 +103,7 @@ describe('HubProviderProfileItem', () => {
       createdAt: '2026-03-18T00:00:00.000Z',
       updatedAt: '2026-03-18T00:00:00.000Z',
     };
-    const onSave = vi.fn<(profileId: string, payload: ProfileEditPayload) => Promise<void>>(async () => {});
+    const onSave = vi.fn<(payload: ProfileEditPayload) => Promise<void>>(async () => {});
 
     await act(async () => {
       root.render(<HubProviderProfileItem profile={profile} busy={false} onSave={onSave} onDelete={() => {}} />);
@@ -126,7 +126,7 @@ describe('HubProviderProfileItem', () => {
     });
 
     expect(onSave).toHaveBeenCalledTimes(1);
-    const payload = onSave.mock.calls[0]![1] as ProfileEditPayload;
+    const payload = onSave.mock.calls[0]![0] as ProfileEditPayload;
     expect(payload.baseUrl).toBe('');
   });
 
@@ -236,7 +236,71 @@ describe('HubProviderProfileItem', () => {
     await act(async () => {
       queryButton(container, '删除').dispatchEvent(new MouseEvent('click', { bubbles: true }));
     });
-    expect(onDelete).toHaveBeenCalledWith('codex-sponsor');
+    expect(onDelete).toHaveBeenCalledTimes(1);
     mockConfirm.mockReset().mockResolvedValue(true);
+  });
+
+  it('saves ACP provider fields as structured payload', async () => {
+    const profile: ProfileItem = {
+      id: 'agent-teams-local',
+      provider: 'agent-teams-local',
+      displayName: 'Agent Teams Local',
+      name: 'Agent Teams Local',
+      authType: 'none',
+      protocol: 'acp',
+      kind: 'acp',
+      builtin: false,
+      mode: 'none',
+      command: 'uv',
+      args: ['--directory', '/opt/workspace/agent-teams', 'run', 'agent-teams', 'gateway', 'acp', 'stdio'],
+      cwd: '/opt/workspace/agent-teams',
+      modelAccessMode: 'clowder_default_profile',
+      defaultModelProfileRef: 'default-openai',
+      hasApiKey: false,
+      createdAt: '2026-03-18T00:00:00.000Z',
+      updatedAt: '2026-03-18T00:00:00.000Z',
+    };
+    const onSave = vi.fn<(payload: ProfileEditPayload) => Promise<void>>(async () => {});
+
+    await act(async () => {
+      root.render(
+        <HubProviderProfileItem
+          profile={profile}
+          busy={false}
+          acpModelProfiles={[
+            {
+              id: 'default-openai',
+              displayName: 'Default OpenAI',
+              name: 'Default OpenAI',
+              provider: 'openai_compatible',
+              model: 'gpt-4.1',
+              baseUrl: 'https://api.openai.com/v1',
+              hasApiKey: true,
+              createdAt: '2026-03-18T00:00:00.000Z',
+              updatedAt: '2026-03-18T00:00:00.000Z',
+            },
+          ]}
+          onSave={onSave}
+          onDelete={() => {}}
+        />,
+      );
+    });
+
+    await act(async () => {
+      queryButton(container, '编辑').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+    await act(async () => {
+      queryButton(container, '保存').dispatchEvent(new MouseEvent('click', { bubbles: true }));
+    });
+
+    expect(onSave).toHaveBeenCalledTimes(1);
+    expect(onSave.mock.calls[0]![0]).toMatchObject({
+      displayName: 'Agent Teams Local',
+      command: 'uv',
+      args: ['--directory', '/opt/workspace/agent-teams', 'run', 'agent-teams', 'gateway', 'acp', 'stdio'],
+      cwd: '/opt/workspace/agent-teams',
+      modelAccessMode: 'clowder_default_profile',
+      defaultModelProfileRef: 'default-openai',
+    } satisfies ProfileEditPayload);
   });
 });
