@@ -248,7 +248,7 @@ export function HubCapabilityTab() {
       {/* External Skills Section */}
       <CapabilitySection
         icon={<SectionIconExtension />}
-        title="SkillHub"
+        title="Skill扩展"
         subtitle="外部扩展 Skills"
         items={externalSkills}
         catFamilies={catFamilies}

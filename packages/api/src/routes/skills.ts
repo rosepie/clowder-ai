@@ -443,12 +443,24 @@ export const skillsRoutes: FastifyPluginAsync = async (app) => {
     const skillDir = join(skillsDir, skillName);
 
     try {
+      // Detect common prefix directory (e.g. all files under "my-skill/" folder)
+      // If all paths share the same first directory, strip it
+      const paths = body.files.map((f) => f.path.replace(/\\/g, '/'));
+      let prefix = '';
+      if (paths.length > 0) {
+        const firstSegment = paths[0].split('/')[0];
+        if (firstSegment && paths.every((p) => p.startsWith(`${firstSegment}/`))) {
+          prefix = `${firstSegment}/`;
+        }
+      }
+
       // Write all files
       for (const file of body.files) {
-        const safePath = file.path
-          .replace(/\\/g, '/')
-          .replace(/\.\.\//g, '')
-          .replace(/^\//, '');
+        const relPath = file.path.replace(/\\/g, '/');
+        // Strip common prefix folder
+        const stripped = prefix ? relPath.slice(prefix.length) : relPath;
+        // Sanitize
+        const safePath = stripped.replace(/\.\.\//g, '').replace(/^\//, '');
         if (!safePath) continue;
         const fullPath = join(skillDir, safePath);
         await mkdir(dirname(fullPath), { recursive: true });
