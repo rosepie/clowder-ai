@@ -40,6 +40,8 @@ Open `http://localhost:3003` and start talking to your team.
 
 > **Alternative — One-line installer (Linux):** `bash scripts/install.sh` handles Node, pnpm, Redis, dependencies, `.env`, and first launch in one step. On **Windows**, use `scripts/install.ps1` then `scripts/start-windows.ps1`.
 
+> **Offline Windows packaging:** to produce a self-contained `.exe` installer for air-gapped environments, see [docs/windows-offline-installer.md](docs/windows-offline-installer.md).
+
 ## How `pnpm start` Works (Runtime Worktree)
 
 Clowder uses a **runtime worktree** to keep your dev checkout clean:
@@ -377,4 +379,3 @@ pnpm alpha:test         # Run alpha integration tests
 **Frontend can't connect to API?**
 - Make sure `NEXT_PUBLIC_API_URL=http://localhost:3004` is set
 - API must be running before frontend loads
-

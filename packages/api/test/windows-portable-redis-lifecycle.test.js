@@ -103,8 +103,13 @@ test('Windows startup preserves runtime Redis overrides, validates artifacts, an
   assert.match(startWindowsScript, /Write-Err "Build failed: mcp-server";\s+throw "Build failed: mcp-server"/);
   assert.match(startWindowsScript, /Write-Err "Build failed: api";\s+throw "Build failed: api"/);
   assert.match(startWindowsScript, /Write-Err "Build failed: web";\s+throw "Build failed: web"/);
-  assert.match(startWindowsScript, /\$nextCli = Join-Path \$ProjectRoot "node_modules\/next\/dist\/bin\/next"/);
-  assert.match(startWindowsScript, /Write-Err "Next CLI not found at \$nextCli - run pnpm install first"/);
+  assert.match(startWindowsScript, /\$nextCli = @\(/);
+  assert.match(startWindowsScript, /Join-Path \$ProjectRoot "packages\/web\/node_modules\/next\/dist\/bin\/next"/);
+  assert.match(startWindowsScript, /Join-Path \$ProjectRoot "node_modules\/next\/dist\/bin\/next"/);
+  assert.match(
+    startWindowsScript,
+    /Write-Err "Next CLI not found - run pnpm install first or rebuild the packaged bundle"/,
+  );
   assert.match(startWindowsScript, /Service job '\$\(\$job.Name\)' stopped \(\$\(\$job.State\)\)/);
 });
 
@@ -115,7 +120,7 @@ test('Windows startup preserves configured REDIS_URL with DB suffix and credenti
   );
 });
 
-test('Windows startup refuses non-Clowder Redis listeners before reusing port 6399', () => {
+test('Windows startup reuses existing local Redis listeners even when they are not Clowder-owned', () => {
   assert.match(
     startWindowsScript,
     /\$redisConnections = Get-NetTCPConnection -LocalPort \$RedisPort -State Listen -ErrorAction SilentlyContinue/,
@@ -127,9 +132,9 @@ test('Windows startup refuses non-Clowder Redis listeners before reusing port 63
   );
   assert.match(
     startWindowsScript,
-    /Write-Err "Redis port \$RedisPort is in use by non-Clowder PID \$\(\$conn\.OwningProcess\)\. Stop it manually or change REDIS_PORT\."/,
+    /Write-Warn "Redis port \$RedisPort is in use by non-Clowder PID \$\(\$conn\.OwningProcess\) - reusing existing local Redis"/,
   );
-  assert.match(startWindowsScript, /throw "Redis port \$RedisPort is in use by a non-Clowder process"/);
+  assert.doesNotMatch(startWindowsScript, /throw "Redis port \$RedisPort is in use by a non-Clowder process"/);
 });
 
 test('Windows startup only stops Clowder-owned listeners and records managed service PIDs', () => {
@@ -153,13 +158,15 @@ test('Windows installer and startup reuse shared tool resolution instead of raw 
   assert.match(installScript, /\$corepackCommand = Resolve-ToolCommand -Name "corepack"/);
   assert.match(installScript, /\$npmCommand = Resolve-ToolCommand -Name "npm"/);
   assert.match(installScript, /Resolve-ToolCommand -Name \$tool\.Cmd/);
+  assert.match(startWindowsScript, /Resolve-BundledNodeCommand -ProjectRoot \$ProjectRoot/);
+  assert.match(startWindowsScript, /\$nodeCommand = Resolve-ToolCommand -Name "node"/);
   assert.match(startWindowsScript, /\$pnpmCommand = Resolve-ToolCommand -Name "pnpm"/);
   assert.match(startWindowsScript, /& \$pnpmCommand run build/);
-  assert.match(startWindowsScript, /param\(\$root, \$port, \$nextCli\)/);
-  assert.match(startWindowsScript, /& node \$nextCli dev \(Join-Path \$root "packages\/web"\) -p \$port/);
+  assert.match(startWindowsScript, /param\(\$root, \$port, \$nextCli, \$nodeCommand\)/);
+  assert.match(startWindowsScript, /& \$nodeCommand \$nextCli dev \(Join-Path \$root "packages\/web"\) -p \$port/);
   assert.match(
     startWindowsScript,
-    /& node \$nextCli start \(Join-Path \$root "packages\/web"\) -p \$port -H 0\.0\.0\.0/,
+    /& \$nodeCommand \$nextCli start \(Join-Path \$root "packages\/web"\) -p \$port -H 0\.0\.0\.0/,
   );
 });
 

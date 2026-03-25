@@ -61,12 +61,36 @@ if (Test-Path $envFile) {
     Write-Warn ".env not found - using defaults"
 }
 
-$pnpmCommand = Resolve-ToolCommand -Name "pnpm"
-if (-not $pnpmCommand) {
-    Write-Err "pnpm not found. Run .\scripts\install.ps1 first."
+$bundledRelease = Test-ClowderBundledRelease -ProjectRoot $ProjectRoot
+$nodeCommand = Resolve-BundledNodeCommand -ProjectRoot $ProjectRoot
+if (-not $nodeCommand) {
+    $nodeCommand = Resolve-ToolCommand -Name "node"
+}
+if (-not $nodeCommand) {
+    Write-Err "Node.js not found. Run .\scripts\install.ps1 first or reinstall the packaged bundle."
     exit 1
 }
-Write-Ok "pnpm: $pnpmCommand"
+Write-Ok "Node: $nodeCommand"
+
+$pnpmCommand = $null
+if ($bundledRelease) {
+    Write-Ok "Bundled release detected - prebuilt runtime enabled"
+    if ($Dev) {
+        Write-Warn "Bundled release does not support -Dev - using production mode"
+        $Dev = $false
+    }
+    if (-not $Quick) {
+        Write-Warn "Bundled release uses prebuilt artifacts - enabling -Quick"
+        $Quick = $true
+    }
+} else {
+    $pnpmCommand = Resolve-ToolCommand -Name "pnpm"
+    if (-not $pnpmCommand) {
+        Write-Err "pnpm not found. Run .\scripts\install.ps1 first."
+        exit 1
+    }
+    Write-Ok "pnpm: $pnpmCommand"
+}
 
 # -- Ports ---------------------------------------------------
 $ApiPort = if ($env:API_SERVER_PORT) { $env:API_SERVER_PORT } else { "3004" }
@@ -195,8 +219,7 @@ if ($useExternalRedis) {
                 $isManagedPid = $managedRedisPid -and ($conn.OwningProcess -eq $managedRedisPid)
                 $isClowderOwned = $isManagedPid -or (Test-ClowderOwnedProcess -ProcessId $conn.OwningProcess -ProjectRoot $ProjectRoot)
                 if (-not $isClowderOwned) {
-                    Write-Err "Redis port $RedisPort is in use by non-Clowder PID $($conn.OwningProcess). Stop it manually or change REDIS_PORT."
-                    throw "Redis port $RedisPort is in use by a non-Clowder process"
+                    Write-Warn "Redis port $RedisPort is in use by non-Clowder PID $($conn.OwningProcess) - reusing existing local Redis"
                 }
             }
             Write-Ok "Redis already running on port $RedisPort"
@@ -209,9 +232,6 @@ if ($useExternalRedis) {
             throw "not running"
         }
     } catch {
-        if ($_.Exception -and $_.Exception.Message -like "Redis port $RedisPort is in use by a non-Clowder process") {
-            throw
-        }
         Write-Warn "Redis not running on port $RedisPort"
         # Try to start Redis
         try {
@@ -318,9 +338,12 @@ try {
         Write-Err ".next directory not found - run without -Quick first to build"
         throw ".next directory not found"
     }
-    $nextCli = Join-Path $ProjectRoot "node_modules/next/dist/bin/next"
+    $nextCli = @(
+        (Join-Path $ProjectRoot "packages/web/node_modules/next/dist/bin/next"),
+        (Join-Path $ProjectRoot "node_modules/next/dist/bin/next")
+    ) | Where-Object { Test-Path $_ } | Select-Object -First 1
     if (-not (Test-Path $nextCli)) {
-        Write-Err "Next CLI not found at $nextCli - run pnpm install first"
+        Write-Err "Next CLI not found - run pnpm install first or rebuild the packaged bundle"
         throw "Next CLI not found"
     }
 
@@ -342,7 +365,7 @@ try {
     # No --env-file needed - avoids depending on Node's --env-file support here.
     Write-Host "  Starting API Server (port $ApiPort)..."
     $apiJob = Start-Job -Name "api" -ScriptBlock {
-        param($root, $envFile, $runtimeEnvOverrides, $apiEntry)
+        param($root, $envFile, $runtimeEnvOverrides, $apiEntry, $nodeCommand)
         Set-Location (Join-Path $root "packages/api")
         # Load .env into job process (Start-Job inherits parent env,
         # but re-load to be safe if process env was not fully propagated)
@@ -366,8 +389,8 @@ try {
                 [System.Environment]::SetEnvironmentVariable($entry.Key, [string]$entry.Value, "Process")
             }
         }
-        & node $apiEntry 2>&1
-    } -ArgumentList $ProjectRoot, $envFile, $runtimeEnvOverrides, $apiEntry
+        & $nodeCommand $apiEntry 2>&1
+    } -ArgumentList $ProjectRoot, $envFile, $runtimeEnvOverrides, $apiEntry, $nodeCommand
     $jobs += $apiJob
 
     Start-Sleep -Seconds 2
@@ -377,19 +400,19 @@ try {
         # Development mode: next dev (hot reload)
         Write-Host "  Starting Frontend (port $WebPort, dev)..."
         $webJob = Start-Job -Name "web" -ScriptBlock {
-            param($root, $port, $nextCli)
+            param($root, $port, $nextCli, $nodeCommand)
             $env:PORT = $port
             $env:NEXT_IGNORE_INCORRECT_LOCKFILE = "1"
-            & node $nextCli dev (Join-Path $root "packages/web") -p $port 2>&1
-        } -ArgumentList $ProjectRoot, $WebPort, $nextCli
+            & $nodeCommand $nextCli dev (Join-Path $root "packages/web") -p $port 2>&1
+        } -ArgumentList $ProjectRoot, $WebPort, $nextCli, $nodeCommand
     } else {
         # Production mode: next start (default - avoids #105 issues)
         Write-Host "  Starting Frontend (port $WebPort, production)..."
         $webJob = Start-Job -Name "web" -ScriptBlock {
-            param($root, $port, $nextCli)
+            param($root, $port, $nextCli, $nodeCommand)
             $env:PORT = $port
-            & node $nextCli start (Join-Path $root "packages/web") -p $port -H 0.0.0.0 2>&1
-        } -ArgumentList $ProjectRoot, $WebPort, $nextCli
+            & $nodeCommand $nextCli start (Join-Path $root "packages/web") -p $port -H 0.0.0.0 2>&1
+        } -ArgumentList $ProjectRoot, $WebPort, $nextCli, $nodeCommand
     }
     $jobs += $webJob
 
