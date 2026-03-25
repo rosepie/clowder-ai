@@ -803,7 +803,9 @@ describe('provider profile store', () => {
             {
               catId: 'test-cat',
               defaultVariantId: 'v1',
-              variants: [{ id: 'v1', provider: 'anthropic', accountRef: 'acct-shared', providerProfileId: 'acct-shared' }],
+              variants: [
+                { id: 'v1', provider: 'anthropic', accountRef: 'acct-shared', providerProfileId: 'acct-shared' },
+              ],
             },
           ],
         }),
