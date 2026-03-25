@@ -1,18 +1,15 @@
 import { createModuleLogger } from '../infrastructure/logger.js';
+import type { PuppeteerNode } from 'puppeteer-core';
+import type sharpType from 'sharp';
 
 const log = createModuleLogger('image-exporter');
 
 // puppeteer and sharp are optional — screenshot export degrades gracefully
-type Puppeteer = typeof import('puppeteer').default;
-type Sharp = typeof import('sharp');
-
-let puppeteer: Puppeteer | null = null;
-let sharp: Sharp | null = null;
+let puppeteer: PuppeteerNode | null = null;
+let sharp: typeof sharpType | null = null;
 try {
-  // CJS/ESM interop: TS resolves .default as the module namespace rather than the
-  // declared default export. The runtime value is correct; narrow via unknown.
-  puppeteer = (await import('puppeteer')).default as unknown as Puppeteer;
-  sharp = (await import('sharp')).default as unknown as Sharp;
+  puppeteer = (await import('puppeteer')).default as unknown as PuppeteerNode;
+  sharp = (await import('sharp')).default as unknown as typeof sharpType;
 } catch {
   log.warn('puppeteer/sharp not available — ImageExporter disabled');
 }
