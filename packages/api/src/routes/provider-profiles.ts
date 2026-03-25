@@ -15,6 +15,11 @@ import {
   updateProviderProfile,
 } from '../config/provider-profiles.js';
 import { resolveActiveProjectRoot } from '../utils/active-project-root.js';
+import {
+  filterBootstrapBindingsForAllowedClients,
+  filterProviderProfilesForVisibility,
+  getVisibleBuiltinAuthClients,
+} from '../utils/client-visibility.js';
 import { findMonorepoRoot } from '../utils/monorepo-root.js';
 import { validateProjectPath } from '../utils/project-path.js';
 import { resolveUserId } from '../utils/request-identity.js';
@@ -201,6 +206,9 @@ export const providerProfilesRoutes: FastifyPluginAsync<ProviderProfilesRoutesOp
     return {
       projectPath: projectRoot,
       ...data,
+      providers: filterProviderProfilesForVisibility(data.providers),
+      bootstrapBindings: filterBootstrapBindingsForAllowedClients(data.bootstrapBindings),
+      visibleBuiltinClients: getVisibleBuiltinAuthClients(),
     };
   });
 

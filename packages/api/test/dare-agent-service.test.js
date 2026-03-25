@@ -762,6 +762,18 @@ describe('resolveVenvPython (F135)', () => {
     assert.ok(existsSync(resolved));
   });
 
+  test('returns .venv/Scripts/python.exe on Windows-style installs', () => {
+    const tempRoot = join(tmpdir(), `dare-test-win-${Date.now()}`);
+    const scriptsDir = join(tempRoot, '.venv', 'Scripts');
+    mkdirSync(scriptsDir, { recursive: true });
+    const py = join(scriptsDir, 'python.exe');
+    writeFileSync(py, '');
+
+    const resolved = resolveVenvPython(tempRoot);
+    assert.strictEqual(resolved, py);
+    assert.ok(existsSync(resolved));
+  });
+
   test('returns bare python when .venv does not exist', () => {
     const tempRoot = join(tmpdir(), `dare-test-no-venv-${Date.now()}`);
     const resolved = resolveVenvPython(tempRoot);

@@ -156,7 +156,7 @@ export class DefaultRelayClawSidecarController implements RelayClawSidecarContro
 
   private async start(runtime: RelayClawSidecarRuntime, signal?: AbortSignal): Promise<void> {
     if (!runtime.env.API_KEY || !runtime.env.API_BASE) {
-      throw new Error('jiuwenClaw requires a bound openai-compatible API key profile');
+      throw new Error('jiuwen requires a bound openai-compatible API key profile');
     }
 
     mkdirSync(runtime.homeDir, { recursive: true });
@@ -192,17 +192,17 @@ export class DefaultRelayClawSidecarController implements RelayClawSidecarContro
 
     if (signal?.aborted) {
       this.stop();
-      throw new Error('jiuwenClaw sidecar startup aborted');
+      throw new Error('jiuwen sidecar startup aborted');
     }
 
     const timeoutAt = Date.now() + (this.config.startupTimeoutMs ?? 45_000);
     while (Date.now() < timeoutAt) {
       if (signal?.aborted) {
         this.stop();
-        throw new Error('jiuwenClaw sidecar startup aborted');
+        throw new Error('jiuwen sidecar startup aborted');
       }
       if (!this.child || this.child.exitCode !== null) {
-        throw new Error(`jiuwenClaw sidecar exited during startup${this.recentLogs ? `: ${summarizeLogs(this.recentLogs)}` : ''}`);
+        throw new Error(`jiuwen sidecar exited during startup${this.recentLogs ? `: ${summarizeLogs(this.recentLogs)}` : ''}`);
       }
       if (await this.tcpProbeFn('127.0.0.1', agentPort, 400) && isSidecarReady(this.recentLogs)) {
         return;
@@ -211,7 +211,7 @@ export class DefaultRelayClawSidecarController implements RelayClawSidecarContro
     }
 
     this.stop();
-    throw new Error(`jiuwenClaw sidecar did not become ready in time${this.recentLogs ? `: ${summarizeLogs(this.recentLogs)}` : ''}`);
+    throw new Error(`jiuwen sidecar did not become ready in time${this.recentLogs ? `: ${summarizeLogs(this.recentLogs)}` : ''}`);
   }
 }
 

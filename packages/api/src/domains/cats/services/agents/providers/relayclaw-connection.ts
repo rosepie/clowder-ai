@@ -146,7 +146,7 @@ export class RelayClawConnectionManager implements RelayClawConnection {
             channel_id: '',
             payload: {
               event_type: 'chat.error',
-              error: 'jiuwenClaw WebSocket connection closed unexpectedly',
+              error: 'jiuwen WebSocket connection closed unexpectedly',
               is_complete: true,
             },
             is_complete: true,

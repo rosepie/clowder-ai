@@ -85,7 +85,7 @@ export class RelayClawAgentService implements AgentService {
       yield {
         type: 'error',
         catId: this.catId,
-        error: `jiuwenClaw connection failed: ${err instanceof Error ? err.message : String(err)}`,
+        error: `jiuwen connection failed: ${err instanceof Error ? err.message : String(err)}`,
         timestamp: Date.now(),
       };
       return;
@@ -107,7 +107,7 @@ export class RelayClawAgentService implements AgentService {
         yield {
           type: 'error',
           catId: this.catId,
-          error: `jiuwenClaw error: ${err instanceof Error ? err.message : String(err)}`,
+          error: `jiuwen error: ${err instanceof Error ? err.message : String(err)}`,
           timestamp: Date.now(),
         };
       }
@@ -122,7 +122,7 @@ export class RelayClawAgentService implements AgentService {
       this.resolvedUrl = await this.sidecar.ensureStarted(options, signal);
     }
     const url = this.resolvedUrl ?? this.config.url;
-    if (!url) throw new Error('jiuwenClaw WebSocket URL is not configured');
+    if (!url) throw new Error('jiuwen WebSocket URL is not configured');
     await this.connection.ensureConnected(url, signal);
   }
 
@@ -165,7 +165,7 @@ export class RelayClawAgentService implements AgentService {
       yield {
         type: 'error',
         catId: this.catId,
-        error: 'jiuwenClaw request timed out before completion',
+        error: 'jiuwen request timed out before completion',
         timestamp: Date.now(),
       };
     }

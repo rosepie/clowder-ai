@@ -188,6 +188,56 @@ describe('provider profiles routes', () => {
     }
   });
 
+  it('GET /api/provider-profiles hides builtin auth cards when the install preset disables them', async () => {
+    const previousAllowedClients = process.env.CAT_CAFE_ALLOWED_CLIENTS;
+    const previousVisibleBuiltinAuthClients = process.env.CAT_CAFE_VISIBLE_BUILTIN_AUTH_CLIENTS;
+    process.env.CAT_CAFE_ALLOWED_CLIENTS = 'opencode,dare,relayclaw';
+    process.env.CAT_CAFE_VISIBLE_BUILTIN_AUTH_CLIENTS = '';
+
+    const Fastify = (await import('fastify')).default;
+    const { providerProfilesRoutes } = await import('../dist/routes/provider-profiles.js');
+    const { createProviderProfile } = await import('../dist/config/provider-profiles.js');
+    const app = Fastify();
+    await app.register(providerProfilesRoutes);
+    await app.ready();
+
+    const projectDir = await makeTmpDir('custom-install-filter');
+    try {
+      await createProviderProfile(projectDir, {
+        provider: 'openai',
+        displayName: 'ModelArts Shared',
+        authType: 'api_key',
+        protocol: 'openai',
+        baseUrl: 'https://api.modelarts-maas.com/v2',
+        apiKey: 'sk-modelarts',
+        models: ['glm-5'],
+      });
+
+      const listRes = await app.inject({
+        method: 'GET',
+        url: `/api/provider-profiles?projectPath=${encodeURIComponent(projectDir)}`,
+        headers: AUTH_HEADERS,
+      });
+      assert.equal(listRes.statusCode, 200);
+
+      const list = listRes.json();
+      assert.deepEqual(list.visibleBuiltinClients, []);
+      assert.deepEqual(
+        list.providers.map((profile) => profile.id),
+        ['modelarts-shared'],
+      );
+      assert.equal(list.providers[0].builtin, false);
+      assert.deepEqual(Object.keys(list.bootstrapBindings), ['dare', 'opencode']);
+    } finally {
+      if (previousAllowedClients === undefined) delete process.env.CAT_CAFE_ALLOWED_CLIENTS;
+      else process.env.CAT_CAFE_ALLOWED_CLIENTS = previousAllowedClients;
+      if (previousVisibleBuiltinAuthClients === undefined) delete process.env.CAT_CAFE_VISIBLE_BUILTIN_AUTH_CLIENTS;
+      else process.env.CAT_CAFE_VISIBLE_BUILTIN_AUTH_CLIENTS = previousVisibleBuiltinAuthClients;
+      await rm(projectDir, { recursive: true, force: true });
+      await app.close();
+    }
+  });
+
   it('POST /api/provider-profiles/:id/test validates api_key profile via fetch', async () => {
     const Fastify = (await import('fastify')).default;
     const { providerProfilesRoutes } = await import('../dist/routes/provider-profiles.js');

@@ -134,18 +134,26 @@ export function resolveVendorDarePath(): string {
  * macOS/Linux: .venv/bin/python; Windows: .venv/Scripts/python.exe (future KD-5)
  */
 export function resolveVenvPython(darePath: string): string {
-  const venvPython = join(darePath, '.venv', 'bin', 'python');
-  if (existsSync(venvPython)) return venvPython;
+  const posixVenvPython = join(darePath, '.venv', 'bin', 'python');
+  if (existsSync(posixVenvPython)) return posixVenvPython;
+  const windowsVenvPython = join(darePath, '.venv', 'Scripts', 'python.exe');
+  if (existsSync(windowsVenvPython)) return windowsVenvPython;
   return 'python';
 }
 
-function resolveDefaultDarePath(): string | undefined {
+export function resolveDefaultDarePath(): string | undefined {
   const vendorPath = resolveVendorDarePath();
   if (existsSync(join(vendorPath, 'client', '__main__.py'))) return vendorPath;
   // Legacy fallback for existing installs
   const legacyPath = '/tmp/cat-cafe-reviews/Deterministic-Agent-Runtime-Engine';
   if (existsSync(join(legacyPath, 'client', '__main__.py'))) return legacyPath;
   return undefined;
+}
+
+export function dareBundleAvailable(darePath = process.env.DARE_PATH ?? resolveDefaultDarePath()): boolean {
+  const resolvedPath = darePath?.trim();
+  if (!resolvedPath) return false;
+  return existsSync(join(resolvedPath, 'client', '__main__.py')) && resolveVenvPython(resolvedPath) !== 'python';
 }
 
 export class DareAgentService implements AgentService {

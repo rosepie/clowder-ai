@@ -375,6 +375,54 @@ describe('CatCafeHub provider profiles tab', () => {
     expect(container.textContent).not.toContain('绑定范围');
   });
 
+  it('does not synthesize hidden builtin auth cards for the custom install preset', async () => {
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path.startsWith('/api/provider-profiles')) {
+        return Promise.resolve(
+          jsonResponse({
+            projectPath: '/tmp/project',
+            activeProfileId: null,
+            visibleBuiltinClients: [],
+            bootstrapBindings: {
+              dare: { enabled: true, mode: 'api_key', accountRef: 'modelarts-shared' },
+              opencode: { enabled: true, mode: 'api_key', accountRef: 'modelarts-shared' },
+            },
+            providers: [
+              {
+                id: 'modelarts-shared',
+                provider: 'modelarts-shared',
+                displayName: 'ModelArts Shared',
+                name: 'ModelArts Shared',
+                authType: 'api_key',
+                protocol: 'openai',
+                builtin: false,
+                mode: 'api_key',
+                baseUrl: 'https://api.modelarts-maas.com/v2',
+                models: ['glm-5'],
+                hasApiKey: true,
+                createdAt: '2026-03-25T00:00:00.000Z',
+                updatedAt: '2026-03-25T00:00:00.000Z',
+              },
+            ],
+          }),
+        );
+      }
+      throw new Error(`Unexpected apiFetch path: ${path}`);
+    });
+
+    await act(async () => {
+      root.render(React.createElement(HubProviderProfilesTab));
+    });
+    await flushEffects();
+
+    expect(container.textContent).toContain('ModelArts Shared');
+    expect(container.textContent).not.toContain('Claude (OAuth)');
+    expect(container.textContent).not.toContain('Codex (OAuth)');
+    expect(container.textContent).not.toContain('Gemini (OAuth)');
+    expect(container.textContent).not.toContain('OpenCode (client-auth)');
+    expect(container.textContent).not.toContain('Dare (client-auth)');
+  });
+
   it('renders API key creation form inline without protocol or verify controls', async () => {
     mockApiFetch.mockImplementation((path: string) => {
       if (path.startsWith('/api/provider-profiles')) {
@@ -798,6 +846,9 @@ describe('CatCafeHub provider profiles tab', () => {
   it('renders ragdoll rescue section from the dedicated rescue tab', async () => {
     storeState.hubState = { open: true, tab: 'rescue' };
     mockApiFetch.mockImplementation((path: string) => {
+      if (path === '/api/available-clients') {
+        return Promise.resolve(jsonResponse({ clients: [] }));
+      }
       if (path === '/api/config') {
         return Promise.resolve(
           jsonResponse({ config: { cats: {}, perCatBudgets: {}, a2a: {}, memory: {}, hindsight: {}, governance: {} } }),

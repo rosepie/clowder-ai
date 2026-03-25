@@ -178,7 +178,10 @@ export function HubProviderProfilesTab() {
     return [...paths].map((path) => ({ path, label: projectDisplayName(path) }));
   }, [data?.projectPath, knownProjects, threadProjectPath]);
 
-  const displayProfiles = useMemo(() => ensureBuiltinProviderProfiles(data?.providers ?? []), [data?.providers]);
+  const displayProfiles = useMemo(
+    () => ensureBuiltinProviderProfiles(data?.providers ?? [], data?.visibleBuiltinClients),
+    [data?.providers, data?.visibleBuiltinClients],
+  );
   const builtinProfiles = useMemo(() => displayProfiles.filter((profile) => profile.builtin), [displayProfiles]);
   const customProfiles = useMemo(() => displayProfiles.filter((profile) => !profile.builtin), [displayProfiles]);
   const displayCards = useMemo(() => [...builtinProfiles, ...customProfiles], [builtinProfiles, customProfiles]);

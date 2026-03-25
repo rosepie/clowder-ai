@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { randomBytes } from 'node:crypto';
 import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -30,7 +31,8 @@ function usage() {
     API key can also be passed via _INSTALLER_API_KEY env var (preferred for security).
   node scripts/install-auth-config.mjs client-auth remove --project-dir DIR --client CLIENT
   node scripts/install-auth-config.mjs claude-profile set --project-dir DIR [--api-key KEY] [--base-url URL] [--model MODEL]
-  node scripts/install-auth-config.mjs claude-profile remove --project-dir DIR`);
+  node scripts/install-auth-config.mjs claude-profile remove --project-dir DIR
+  node scripts/install-auth-config.mjs modelarts-preset apply --project-dir DIR [--api-key KEY]`);
   process.exit(1);
 }
 
@@ -391,6 +393,11 @@ function writeState(profileFile, secretsFile, profiles, secrets) {
   chmodSync(secretsFile, 0o600);
 }
 
+function writeCatalog(projectDir, catalog) {
+  const catalogFile = ensureStorage(projectDir).profileFile.replace('provider-profiles.json', 'cat-catalog.json');
+  writeFileSync(catalogFile, `${JSON.stringify(catalog, null, 2)}\n`);
+}
+
 function upsertInstallerApiKeyAccount(projectDir, client, options) {
   const { profileFile, secretsFile, profiles, secrets } = readState(projectDir);
   const profileId = options.profileId || `installer-${client}`;
@@ -404,6 +411,7 @@ function upsertInstallerApiKeyAccount(projectDir, client, options) {
     kind: 'api_key',
     authType: 'api_key',
     builtin: false,
+    ...(options.protocol ? { protocol: options.protocol } : {}),
     ...(normalizedBaseUrl ? { baseUrl: normalizedBaseUrl } : {}),
     ...(normalizeModels(options.models) ? { models: normalizeModels(options.models) } : {}),
     createdAt: now,
@@ -416,6 +424,121 @@ function upsertInstallerApiKeyAccount(projectDir, client, options) {
   };
   secrets.profiles[profileId] = { apiKey: options.apiKey };
   writeState(profileFile, secretsFile, profiles, secrets);
+}
+
+function defaultCliForProvider(provider) {
+  switch (provider) {
+    case 'opencode':
+      return { command: 'opencode', outputFormat: 'json', defaultArgs: ['run', '--format', 'json'] };
+    case 'dare':
+      return { command: 'dare', outputFormat: 'json' };
+    case 'relayclaw':
+      return { command: 'jiuwenclaw-app', outputFormat: 'json' };
+    default:
+      return { command: provider, outputFormat: 'json' };
+  }
+}
+
+function readSeedTemplate() {
+  const templatePath = new URL('../cat-template.json', import.meta.url);
+  const template = readJson(templatePath, null);
+  if (!template?.breeds || !template?.roster) {
+    throw new Error('Failed to load cat-template.json for ModelArts preset');
+  }
+  return template;
+}
+
+function buildModelartsBreed(template, breedId, options) {
+  const breed = template.breeds.find((entry) => entry.id === breedId);
+  if (!breed) throw new Error(`ModelArts preset template breed "${breedId}" not found`);
+  const baseVariant = breed.variants.find((variant) => variant.id === breed.defaultVariantId) ?? breed.variants[0];
+  const variantId = `${options.catId}-default`;
+  return {
+    id: breed.id,
+    catId: options.catId,
+    name: breed.name,
+    displayName: breed.displayName,
+    nickname: options.nickname,
+    avatar: breed.avatar,
+    color: breed.color,
+    mentionPatterns: options.mentionPatterns,
+    roleDescription: breed.roleDescription,
+    ...(breed.teamStrengths ? { teamStrengths: breed.teamStrengths } : {}),
+    ...(breed.caution !== undefined ? { caution: breed.caution } : {}),
+    ...(breed.features ? { features: breed.features } : {}),
+    defaultVariantId: variantId,
+    variants: [
+      {
+        ...(baseVariant?.personality ? { personality: baseVariant.personality } : {}),
+        ...(baseVariant?.strengths ? { strengths: baseVariant.strengths } : {}),
+        ...(baseVariant?.contextBudget ? { contextBudget: baseVariant.contextBudget } : {}),
+        ...(baseVariant?.voiceConfig ? { voiceConfig: baseVariant.voiceConfig } : {}),
+        id: variantId,
+        catId: options.catId,
+        provider: options.provider,
+        defaultModel: 'glm-5',
+        mcpSupport: true,
+        cli: defaultCliForProvider(options.provider),
+        accountRef: 'modelarts-shared',
+        providerProfileId: 'modelarts-shared',
+      },
+    ],
+  };
+}
+
+function applyModelartsPreset(projectDir, apiKey) {
+  const sharedApiKey = apiKey?.trim() || `modelarts-${randomBytes(12).toString('hex')}`;
+  upsertInstallerApiKeyAccount(projectDir, 'opencode', {
+    profileId: 'modelarts-shared',
+    displayName: 'ModelArts Shared',
+    apiKey: sharedApiKey,
+    baseUrl: 'https://api.modelarts-maas.com/v2',
+    models: ['glm-5'],
+    protocol: 'openai',
+  });
+
+  const { profileFile, secretsFile, profiles, secrets } = readState(projectDir);
+  profiles.bootstrapBindings = {
+    anthropic: { enabled: false, mode: 'skip' },
+    openai: { enabled: false, mode: 'skip' },
+    google: { enabled: false, mode: 'skip' },
+    dare: { enabled: true, mode: 'api_key', accountRef: 'modelarts-shared' },
+    opencode: { enabled: true, mode: 'api_key', accountRef: 'modelarts-shared' },
+  };
+  writeState(profileFile, secretsFile, profiles, secrets);
+
+  const template = readSeedTemplate();
+  const catalog = {
+    version: 2,
+    coCreator: template.coCreator,
+    reviewPolicy: template.reviewPolicy,
+    roster: {
+      opencode: { ...template.roster.opus, available: true }, // from ragdoll template member "opus"
+      dare: { ...template.roster.codex, available: true }, // from maine-coon template member "codex"
+      jiu: { ...template.roster.opencode, available: true }, // from golden-chinchilla template member "opencode"
+    },
+    breeds: [
+      buildModelartsBreed(template, 'ragdoll', {
+        catId: 'opencode',
+        nickname: '布布',
+        mentionPatterns: ['@opencode'],
+        provider: 'opencode',
+      }),
+      buildModelartsBreed(template, 'maine-coon', {
+        catId: 'dare',
+        nickname: '小因',
+        mentionPatterns: ['@dare'],
+        provider: 'dare',
+      }),
+      buildModelartsBreed(template, 'golden-chinchilla', {
+        catId: 'jiu',
+        nickname: '小九',
+        mentionPatterns: ['@jiu'],
+        provider: 'relayclaw',
+      }),
+    ],
+  };
+  writeCatalog(projectDir, catalog);
 }
 
 function setClientOauthBinding(projectDir, client) {
@@ -524,6 +647,12 @@ try {
 
   if (positionals[0] === 'claude-profile' && positionals[1] === 'remove') {
     removeInstallerApiKeyAccount(getRequired(values, 'project-dir'), 'anthropic', 'installer-managed');
+    process.exit(0);
+  }
+
+  if (positionals[0] === 'modelarts-preset' && positionals[1] === 'apply') {
+    const apiKey = getOptional(values, 'api-key', '') || process.env._INSTALLER_API_KEY || '';
+    applyModelartsPreset(getRequired(values, 'project-dir'), apiKey);
     process.exit(0);
   }
 

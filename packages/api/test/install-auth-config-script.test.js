@@ -192,6 +192,84 @@ test('claude-profile create and remove keeps installer-managed account in sync',
   }
 });
 
+test('modelarts-preset apply seeds one shared profile and exactly three runtime members', () => {
+  const projectRoot = mkdtempSync(join(tmpdir(), 'clowder-install-modelarts-preset-'));
+
+  try {
+    runHelper([
+      'modelarts-preset',
+      'apply',
+      '--project-dir',
+      projectRoot,
+      '--api-key',
+      'modelarts-shared-key',
+    ]);
+
+    const { profiles, secrets } = readInstallerState(projectRoot);
+    const modelartsProfile = profiles.providers.find((profile) => profile.id === 'modelarts-shared');
+    assert.deepEqual(profiles.bootstrapBindings, {
+      anthropic: { enabled: false, mode: 'skip' },
+      openai: { enabled: false, mode: 'skip' },
+      google: { enabled: false, mode: 'skip' },
+      dare: { enabled: true, mode: 'api_key', accountRef: 'modelarts-shared' },
+      opencode: { enabled: true, mode: 'api_key', accountRef: 'modelarts-shared' },
+    });
+    assert.deepEqual(modelartsProfile, {
+      id: 'modelarts-shared',
+      displayName: 'ModelArts Shared',
+      kind: 'api_key',
+      authType: 'api_key',
+      builtin: false,
+      protocol: 'openai',
+      baseUrl: 'https://api.modelarts-maas.com/v2',
+      models: ['glm-5'],
+      createdAt: modelartsProfile.createdAt,
+      updatedAt: modelartsProfile.updatedAt,
+    });
+    assert.equal(secrets.profiles['modelarts-shared'].apiKey, 'modelarts-shared-key');
+
+    const catalog = JSON.parse(readFileSync(join(projectRoot, '.cat-cafe', 'cat-catalog.json'), 'utf8'));
+    assert.deepEqual(
+      catalog.breeds.map((breed) => ({
+        catId: breed.catId,
+        nickname: breed.nickname,
+        mentionPatterns: breed.mentionPatterns,
+        provider: breed.variants[0].provider,
+        accountRef: breed.variants[0].accountRef,
+        defaultModel: breed.variants[0].defaultModel,
+      })),
+      [
+        {
+          catId: 'opencode',
+          nickname: '布布',
+          mentionPatterns: ['@opencode'],
+          provider: 'opencode',
+          accountRef: 'modelarts-shared',
+          defaultModel: 'glm-5',
+        },
+        {
+          catId: 'dare',
+          nickname: '小因',
+          mentionPatterns: ['@dare'],
+          provider: 'dare',
+          accountRef: 'modelarts-shared',
+          defaultModel: 'glm-5',
+        },
+        {
+          catId: 'jiu',
+          nickname: '小九',
+          mentionPatterns: ['@jiu'],
+          provider: 'relayclaw',
+          accountRef: 'modelarts-shared',
+          defaultModel: 'glm-5',
+        },
+      ],
+    );
+  } finally {
+    rmSync(projectRoot, { recursive: true, force: true });
+  }
+});
+
 test('client-auth remove fails when the installer-managed account is still referenced by a runtime member', () => {
   const projectRoot = mkdtempSync(join(tmpdir(), 'clowder-install-client-auth-remove-bound-'));
 

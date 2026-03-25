@@ -468,6 +468,13 @@ set_gemini_api_key_mode() {
     [[ -n "$base_url" ]] && collect_env "GEMINI_BASE_URL" "$base_url" || clear_env "GEMINI_BASE_URL"
     [[ -n "$model" ]] && collect_env "CAT_GEMINI_MODEL" "$model" || clear_env "CAT_GEMINI_MODEL"
 }
+apply_modelarts_custom_env() {
+    collect_env "CAT_CAFE_ALLOWED_CLIENTS" "opencode,dare,relayclaw"
+    collect_env "CAT_CAFE_VISIBLE_BUILTIN_AUTH_CLIENTS" ""
+    clear_env "CODEX_AUTH_MODE"
+    clear_env "OPENAI_API_KEY"; clear_env "OPENAI_BASE_URL"; clear_env "OPENAI_API_BASE"; clear_env "CAT_CODEX_MODEL"
+    clear_env "GEMINI_API_KEY"; clear_env "GEMINI_BASE_URL"; clear_env "CAT_GEMINI_MODEL"
+}
 write_claude_profile() {
     local key="$1" base_url="$2" model="$3" pdir=""
     pdir="$(resolve_provider_profiles_dir)"; mkdir -p "$pdir"
@@ -719,149 +726,51 @@ if [[ -n "$DARE_VENDOR_DIR" && -f "$DARE_VENDOR_DIR/client/__main__.py" ]]; then
     fi
 fi
 
+# F custom: jiuwen runtime (Linux)
+JIUWEN_VENDOR_DIR="$PROJECT_DIR/vendor/jiuwenclaw"
+if [[ -f "$JIUWEN_VENDOR_DIR/jiuwenclaw/app.py" ]]; then
+    if [[ ! -f "$JIUWEN_VENDOR_DIR/.venv/bin/python" ]]; then
+        info "  Preparing jiuwen runtime..."
+        if command -v uv &>/dev/null; then
+            if uv venv "$JIUWEN_VENDOR_DIR/.venv" 2>&1 && \
+               uv pip install --python "$JIUWEN_VENDOR_DIR/.venv/bin/python" -e "$JIUWEN_VENDOR_DIR" 2>&1; then
+                ok "jiuwen runtime ready"
+            else
+                warn "jiuwen runtime setup failed (uv) — jiuwen client will stay unavailable"
+                JIUWEN_VENDOR_DIR=""
+            fi
+        elif command -v python3 &>/dev/null; then
+            if python3 -m venv "$JIUWEN_VENDOR_DIR/.venv" 2>&1 && \
+               "$JIUWEN_VENDOR_DIR/.venv/bin/pip" install --upgrade pip setuptools wheel 2>&1 && \
+               "$JIUWEN_VENDOR_DIR/.venv/bin/pip" install -e "$JIUWEN_VENDOR_DIR" 2>&1; then
+                ok "jiuwen runtime ready"
+            else
+                warn "jiuwen runtime setup failed (python3) — jiuwen client will stay unavailable"
+                JIUWEN_VENDOR_DIR=""
+            fi
+        else
+            warn "Neither uv nor python3 found — skipping jiuwen runtime setup"
+            JIUWEN_VENDOR_DIR=""
+        fi
+    else
+        ok "jiuwen runtime already exists"
+    fi
+fi
+
 # ── [6/9] Install AI agent CLI tools ─────────────────────
 step "[6/9] Installing AI CLI tools / 安装 AI 命令行工具..."
-info "  Clowder spawns CLI subprocesses — these are required"
+info "  Custom install installs only the required opencode client"
 install_npm_cli() {
     local name="$1" cmd="$2" pkg="$3"; info "  Installing $name ($pkg)..."; npm_global_install "$pkg" 2>&1; hash -r 2>/dev/null || true
     command -v "$cmd" &>/dev/null || { fail "$name install failed. Try: npm install -g $pkg"; exit 1; }; ok "$name installed"
 }
-install_claude_cli() {
-    info "  Installing Claude Code..."
-    # Download the installer to a temp file first, then run it.
-    # Running `curl ... | bash </dev/null` breaks the pipe because bash's stdin
-    # becomes the pipe from curl. A temp file avoids the stdin conflict.
-    local tmp_installer; tmp_installer="$(mktemp)"
-    curl -fsSL https://claude.ai/install.sh -o "$tmp_installer" 2>&1
-    bash "$tmp_installer" </dev/null 2>&1
-    rm -f "$tmp_installer"
-    export PATH="$HOME/.local/bin:$HOME/.claude/bin:$PATH"; hash -r 2>/dev/null || true
-    command -v claude &>/dev/null || { fail "Claude install failed. Try: curl -fsSL https://claude.ai/install.sh | bash"; exit 1; }; ok "Claude Code installed"
-}
-# Detect missing CLIs
-MISSING_AGENTS=()
-command -v claude &>/dev/null && ok "Claude Code already installed" || MISSING_AGENTS+=("claude")
-command -v codex &>/dev/null && ok "Codex CLI already installed"  || MISSING_AGENTS+=("codex")
-command -v gemini &>/dev/null && ok "Gemini CLI already installed" || MISSING_AGENTS+=("gemini")
-
-if [[ ${#MISSING_AGENTS[@]} -gt 0 ]]; then
-    INSTALL_AGENTS=("${MISSING_AGENTS[@]}")  # default: install all missing
-    if [[ "$HAS_TTY" == true ]]; then
-        AGENT_SEL_INDICES=""
-        tty_multiselect AGENT_SEL_INDICES \
-            "  Select agents to install / 选择要安装的 Agent CLI：" \
-            "${MISSING_AGENTS[@]}"
-        if [[ -z "$AGENT_SEL_INDICES" ]]; then
-            INSTALL_AGENTS=()
-            warn "No agents selected — skipping CLI install"
-        else
-            INSTALL_AGENTS=()
-            IFS=',' read -ra SEL_IDX <<< "$AGENT_SEL_INDICES"
-            for idx in "${SEL_IDX[@]}"; do
-                INSTALL_AGENTS+=("${MISSING_AGENTS[$idx]}")
-            done
-        fi
-    fi
-    for agent in "${INSTALL_AGENTS[@]}"; do
-        case "$agent" in
-            claude) install_claude_cli ;;
-            codex)  install_npm_cli "Codex CLI" "codex" "@openai/codex" ;;
-            gemini) install_npm_cli "Gemini CLI" "gemini" "@google/gemini-cli" ;;
-        esac
-    done
-fi
+command -v opencode &>/dev/null && ok "OpenCode CLI already installed" || install_npm_cli "OpenCode CLI" "opencode" "opencode-ai"
 
 # ── [7/9] Authentication setup / 认证配置 ─────────────────
 step "[7/9] Authentication setup / 认证配置..."
-configure_agent_auth() {
-    local name="$1" cmd="$2"
-    command -v "$cmd" &>/dev/null || return 0
-
-    # Gemini CLI doesn't support custom API endpoints — always use OAuth
-    if [[ "$cmd" == "gemini" ]]; then
-        node scripts/install-auth-config.mjs client-auth set \
-            --project-dir "$PROJECT_DIR" \
-            --client "$cmd" \
-            --mode oauth
-        ok "$name: OAuth mode (Gemini CLI only supports Google official API)"
-        return 0
-    fi
-
-    local auth_sel
-    tty_select auth_sel "  $name ($cmd) — auth mode:" \
-        "OAuth / Subscription (recommended / 推荐)" \
-        "API Key"
-    if [[ "$auth_sel" != "1" ]]; then
-        # Remove stale installer API Key profile + set OAuth binding
-        node scripts/install-auth-config.mjs client-auth remove \
-            --project-dir "$PROJECT_DIR" \
-            --client "$cmd" 2>/dev/null || true
-        node scripts/install-auth-config.mjs client-auth set \
-            --project-dir "$PROJECT_DIR" \
-            --client "$cmd" \
-            --mode oauth
-        ok "$name: OAuth mode (login on first use: run '$cmd')"
-        return 0
-    fi
-    local key="" base_url="" model=""
-    tty_read_secret "    API Key: " key
-    tty_read "    Base URL (Enter = default): " base_url
-    tty_read "    Model (Enter = default): " model
-
-    if [[ -n "$key" ]]; then
-        # All clients use the same install-auth-config.mjs to create provider profiles
-        local install_args=(
-            node scripts/install-auth-config.mjs client-auth set
-            --project-dir "$PROJECT_DIR"
-            --client "$cmd"
-            --mode api_key
-            --base-url "${base_url:-}"
-        )
-        [[ -n "$model" ]] && install_args+=(--model "$model")
-        _INSTALLER_API_KEY="$key" "${install_args[@]}"
-        ok "$name: API key profile created in .cat-cafe/"
-    else
-        # No key provided — set OAuth mode via unified path
-        # Also remove any stale installer API Key profile for this client
-        node scripts/install-auth-config.mjs client-auth remove \
-            --project-dir "$PROJECT_DIR" \
-            --client "$cmd" 2>/dev/null || true
-        node scripts/install-auth-config.mjs client-auth set \
-            --project-dir "$PROJECT_DIR" \
-            --client "$cmd" \
-            --mode oauth
-        warn "$name: no key provided, keeping OAuth"
-    fi
-}
-
-configure_dare_auth() {
-    # F135: DARE uses API key only (no OAuth / no CLI binary)
-    [[ -f "$DARE_VENDOR_DIR/client/__main__.py" ]] || return 0
-    local key=""
-    tty_read_secret "    Dare (狸花猫) — OpenRouter API Key (Enter = skip): " key
-    if [[ -n "$key" ]]; then
-        _INSTALLER_API_KEY="$key" node scripts/install-auth-config.mjs client-auth set \
-            --project-dir "$PROJECT_DIR" \
-            --client dare \
-            --mode api_key \
-            --model z-ai/glm-4.7
-        ok "Dare (狸花猫): API key configured"
-    else
-        warn "Dare (狸花猫): no key — set OPENROUTER_API_KEY in .env to enable later"
-    fi
-}
-
-if [[ "$HAS_TTY" == true ]]; then
-    info "  Configure each agent / 逐个配置每只猫的认证方式："
-    configure_agent_auth "Claude (布偶猫)" "claude"; configure_agent_auth "Codex (缅因猫)" "codex"
-    configure_agent_auth "Gemini (暹罗猫)" "gemini"; configure_dare_auth
-else
-    info "  Non-interactive — skipping auth. Run each CLI to log in: claude / codex / gemini"
-    if [[ -n "$DARE_VENDOR_DIR" ]]; then
-        info "  Dare (狸花猫): set OPENROUTER_API_KEY in .env or run:"
-        info "    node scripts/install-auth-config.mjs client-auth set --project-dir $PROJECT_DIR --client dare --mode api_key --api-key YOUR_KEY"
-    fi
-fi
+node scripts/install-auth-config.mjs modelarts-preset apply --project-dir "$PROJECT_DIR"
+apply_modelarts_custom_env
+ok "ModelArts preset written: 3 cats / shared glm-5 profile / opencode+dare+jiuwen only"
 
 # ── [8/9] Generate .env with all collected config ─────────
 step "[8/9] Generating config / 生成配置..."

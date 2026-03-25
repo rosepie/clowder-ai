@@ -718,7 +718,7 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     assert.match(createBody.error, /only supports builtin Gemini auth/i);
   });
 
-  it('POST /api/cats allows jiuwenClaw with openai-compatible api_key profiles and rejects oauth bindings', async () => {
+  it('POST /api/cats allows jiuwen with openai-compatible api_key profiles and rejects oauth bindings', async () => {
     const projectRoot = createProjectRoot();
     process.env.CAT_TEMPLATE_PATH = join(projectRoot, 'cat-template.json');
 
@@ -784,7 +784,7 @@ describe('cats routes runtime CRUD', { concurrency: false }, () => {
     });
 
     assert.equal(rejectRes.statusCode, 400);
-    assert.match(JSON.parse(rejectRes.body).error, /client "jiuwenClaw" requires an API key provider profile/i);
+    assert.match(JSON.parse(rejectRes.body).error, /client "jiuwen" requires an API key provider profile/i);
   });
 
   it('PATCH /api/cats/:id rejects models that are not available on the bound provider profile', async () => {

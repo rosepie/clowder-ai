@@ -35,6 +35,7 @@ export interface ProviderProfilesResponse {
   activeProfileId: string | null;
   bootstrapBindings: Partial<Record<BuiltinAccountClient, BootstrapBinding>>;
   providers: ProfileItem[];
+  visibleBuiltinClients?: BuiltinAccountClient[];
 }
 
 export interface ProfileTestResult {

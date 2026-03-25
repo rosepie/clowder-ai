@@ -14,19 +14,20 @@ function humanizeProvider(provider: string) {
   if (provider === 'google') return 'Gemini';
   if (provider === 'dare') return 'Dare';
   if (provider === 'opencode') return 'OpenCode';
-  if (provider === 'relayclaw') return 'jiuwenClaw';
+  if (provider === 'relayclaw') return 'jiuwen';
   if (provider === 'antigravity') return 'Antigravity';
   return provider;
 }
 
 function clientRuntimeLabel(cat: CatData, configCat?: CatConfig) {
-  if (cat.provider === 'relayclaw') return 'jiuwenClaw';
+  if (cat.provider === 'relayclaw') return 'jiuwen';
   const accountRef = (cat.accountRef ?? cat.providerProfileId ?? '').toLowerCase();
   if (accountRef.includes('claude')) return 'Claude';
   if (accountRef.includes('codex')) return 'Codex';
   if (accountRef.includes('gemini')) return 'Gemini';
   if (accountRef.includes('opencode')) return 'OpenCode';
   if (accountRef.includes('dare')) return 'Dare';
+  if (accountRef.includes('jiu') || accountRef.includes('modelarts')) return 'jiuwen';
   if (cat.provider === 'antigravity') return 'Antigravity';
   if (cat.source === 'runtime' && cat.provider === 'openai') return 'OpenAI-Compatible';
   return humanizeProvider(configCat?.provider ?? cat.provider);

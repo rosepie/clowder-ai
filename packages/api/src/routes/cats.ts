@@ -24,6 +24,7 @@ import {
 import { createRuntimeCat, deleteRuntimeCat, updateRuntimeCat } from '../config/runtime-cat-catalog.js';
 import { deleteRuntimeOverride, getRuntimeOverride, setRuntimeOverride } from '../config/session-strategy-overrides.js';
 import { resolveActiveProjectRoot } from '../utils/active-project-root.js';
+import { getAllowedClientIds, isClientAllowed } from '../utils/client-visibility.js';
 
 const colorSchema = z.object({
   primary: z.string().min(1),
@@ -124,6 +125,10 @@ function resolveOperator(raw: unknown): string | null {
 
 function resolveProjectRoot(): string {
   return resolveActiveProjectRoot();
+}
+
+function allowedClientsError(client: string): string {
+  return `client "${client}" is disabled for this install; allowed clients: ${getAllowedClientIds().join(', ')}`;
 }
 
 type CatSource = 'seed' | 'runtime';
@@ -361,6 +366,10 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
     const projectRoot = resolveProjectRoot();
     const managedIdsBefore = getManagedCatalogIds(projectRoot);
     const body = parsed.data;
+    if (!isClientAllowed(body.client)) {
+      reply.status(400);
+      return { error: allowedClientsError(body.client) };
+    }
 
     // Validate alias uniqueness across all existing members
     if (body.mentionPatterns?.length) {
@@ -487,6 +496,10 @@ export const catsRoutes: FastifyPluginAsync<CatsRoutesOptions> = async (app, opt
       return { error: `Cat "${request.params.id}" not found` };
     }
     const effectiveClient = body.client ?? currentCat.provider;
+    if (!isClientAllowed(effectiveClient)) {
+      reply.status(400);
+      return { error: allowedClientsError(effectiveClient) };
+    }
     const nextAccountRef = resolveAccountRef(body);
     const currentEffectiveAccountRef = await resolveEffectiveAccountRef(currentCat);
     const effectiveAccountRef =

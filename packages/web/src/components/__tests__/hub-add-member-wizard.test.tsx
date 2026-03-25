@@ -195,7 +195,7 @@ describe('HubAddMemberWizard', () => {
               { id: 'google', label: 'Gemini', command: 'gemini', available: true },
               { id: 'dare', label: 'Dare', command: 'dare', available: true },
               { id: 'opencode', label: 'OpenCode', command: 'opencode', available: true },
-              { id: 'relayclaw', label: 'jiuwenClaw', command: 'jiuwenclaw-app', available: true },
+              { id: 'relayclaw', label: 'jiuwen', command: 'jiuwenclaw-app', available: true },
               { id: 'antigravity', label: 'Antigravity', command: 'antigravity', available: true },
             ],
           }),
@@ -222,7 +222,7 @@ describe('HubAddMemberWizard', () => {
     expect(queryField(container, '[aria-label="Client Row 1"]').textContent).toContain('Gemini');
     expect(queryField(container, '[aria-label="Client Row 2"]').textContent).toContain('OpenCode');
     expect(queryField(container, '[aria-label="Client Row 2"]').textContent).toContain('Dare');
-    expect(queryField(container, '[aria-label="Client Row 2"]').textContent).toContain('jiuwenClaw');
+    expect(queryField(container, '[aria-label="Client Row 2"]').textContent).toContain('jiuwen');
     expect(queryField(container, '[aria-label="Client Row 2"]').textContent).toContain('Antigravity');
     expect(container.textContent).toContain('Step 2: 选择 Provider / 配置 CLI');
     expect(container.textContent).toContain('Step 3: 选择模型');
@@ -247,13 +247,13 @@ describe('HubAddMemberWizard', () => {
     expect(queryField<HTMLSelectElement>(container, 'select[aria-label="Model"]').value).toBe('gpt-5.4-mini');
   });
 
-  it('shows only openai-compatible API key profiles for jiuwenClaw', async () => {
+  it('shows only openai-compatible API key profiles for jiuwen', async () => {
     await act(async () => {
       root.render(React.createElement(HubAddMemberWizard, { open: true, onClose: vi.fn(), onComplete: vi.fn() }));
     });
     await flushEffects();
 
-    await click(queryButton(container, 'jiuwenClaw'));
+    await click(queryButton(container, 'jiuwen'));
     expect(container.textContent).toContain('Codex Sponsor');
     expect(container.textContent).not.toContain('Codex (OAuth)');
     expect(container.textContent).not.toContain('Claude (OAuth)');

@@ -318,54 +318,42 @@ Write-Step "Step 6/9 - Skills mount"
 Mount-InstallerSkills -ProjectRoot $ProjectRoot
 
 Write-Step "Step 7/9 - AI CLI tools"
-
-$cliTools = @(
-    @{ Name = "Claude"; Label = "Claude"; Cmd = "claude"; Pkg = "@anthropic-ai/claude-code" },
-    @{ Name = "Codex"; Label = "Codex"; Cmd = "codex"; Pkg = "@openai/codex" },
-    @{ Name = "Gemini"; Label = "Gemini"; Cmd = "gemini"; Pkg = "@google/gemini-cli" }
-)
+Write-Host "  Custom install keeps only opencode + dare + jiuwen"
 
 if (-not $SkipCli) {
-    $missingTools = @($cliTools | Where-Object { -not (Resolve-ToolCommand -Name $_.Cmd) })
-    $toolsToInstall = if ($missingTools.Count -gt 0 -and [Environment]::UserInteractive -and -not $env:CI) {
-        Select-InstallerMultiChoice -Title "Missing agent CLIs" -Prompt "Choose which agent CLIs to install" -Options $missingTools
-    } else { $missingTools }
-    $npmInstallCommand = Resolve-ToolCommand -Name "npm"
-    foreach ($tool in $cliTools) {
-        $installed = $null -ne (Resolve-ToolCommand -Name $tool.Cmd)
-        if ($installed) {
-            Write-Ok "$($tool.Name) CLI already installed"
-        } elseif ($toolsToInstall.Cmd -notcontains $tool.Cmd) {
-            Write-Warn "$($tool.Name) CLI install skipped"
-        } else {
-            Write-Host "  Installing $($tool.Name) CLI..."
-            try {
-                if (-not $npmInstallCommand) { throw "npm command not found" }
-                & $npmInstallCommand install -g $tool.Pkg 2>$null
-                if (Resolve-ToolCommandWithRetry -Name $tool.Cmd -Attempts 6) {
-                    Write-Ok "$($tool.Name) CLI installed"
-                } else {
-                    Write-ToolResolutionDiagnostics -Name $tool.Cmd
-                    Write-Warn "$($tool.Name) CLI install completed but command was not visible yet"
-                }
-            } catch {
-                Exit-InstallerIfCancelled -ErrorRecord $_ -Context "$($tool.Name) CLI install"
-                Write-Warn "Could not install $($tool.Name) CLI: npm install -g $($tool.Pkg)"
+    $openCodeCommand = Resolve-ToolCommand -Name "opencode"
+    if ($openCodeCommand) {
+        Write-Ok "OpenCode CLI already installed"
+    } else {
+        $npmInstallCommand = Resolve-ToolCommand -Name "npm"
+        Write-Host "  Installing OpenCode CLI..."
+        try {
+            if (-not $npmInstallCommand) { throw "npm command not found" }
+            & $npmInstallCommand install -g opencode-ai 2>$null
+            if (Resolve-ToolCommandWithRetry -Name "opencode" -Attempts 6) {
+                Write-Ok "OpenCode CLI installed"
+            } else {
+                Write-ToolResolutionDiagnostics -Name "opencode"
+                Write-Warn "OpenCode CLI install completed but command was not visible yet"
             }
+        } catch {
+            Exit-InstallerIfCancelled -ErrorRecord $_ -Context "OpenCode CLI install"
+            Write-Warn "Could not install OpenCode CLI: npm install -g opencode-ai"
         }
     }
 } else {
     Write-Warn "CLI tools install skipped (-SkipCli)"
 }
 
+$dareRuntimeReady = Ensure-WindowsDareRuntime -ProjectRoot $ProjectRoot
+$jiuwenClawRuntimeReady = Ensure-WindowsJiuwenClawRuntime -ProjectRoot $ProjectRoot
+
 Write-Step "Step 8/9 - Auth config"
 Configure-InstallerAuth -ProjectRoot $ProjectRoot -State $authState
 
 Apply-InstallerAuthEnv -State $authState -EnvFile $envFile
 
-$hasClaude = $null -ne (Resolve-ToolCommandWithRetry -Name "claude" -Attempts 6)
-$hasCodex = $null -ne (Resolve-ToolCommandWithRetry -Name "codex" -Attempts 6)
-$hasGemini = $null -ne (Resolve-ToolCommandWithRetry -Name "gemini" -Attempts 6)
+$hasOpenCode = $null -ne (Resolve-ToolCommandWithRetry -Name "opencode" -Attempts 6)
 
 Write-Step "Step 9/9 - Verify and launch"
 
@@ -389,9 +377,9 @@ Write-Host ""
 Write-Host "  Project: $ProjectRoot"
 Write-Host "  Node:    $(node --version)"
 Write-Host "  Redis:   $(if ($hasRedis) { 'available' } else { 'not configured' })"
-Write-Host "  Claude:  $(if ($hasClaude) { 'ready' } else { 'not installed' })"
-Write-Host "  Codex:   $(if ($hasCodex) { 'ready' } else { 'not installed' })"
-Write-Host "  Gemini:  $(if ($hasGemini) { 'ready' } else { 'not installed' })"
+Write-Host "  OpenCode: $(if ($hasOpenCode) { 'ready' } else { 'not installed' })"
+Write-Host "  Dare:     $(if ($dareRuntimeReady) { 'ready' } else { 'not installed' })"
+Write-Host "  jiuwen:   $(if ($jiuwenClawRuntimeReady) { 'ready' } else { 'not installed' })"
 Write-Host ""
 Write-Host "  Start the app:" -ForegroundColor Cyan
 $startCmd = ".\scripts\start-windows.ps1"

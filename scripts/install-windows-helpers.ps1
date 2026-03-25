@@ -508,11 +508,11 @@ function Ensure-WindowsJiuwenClawRuntime {
         }
     }
     if (-not $pythonCommand) {
-        Write-Warn "jiuwenClaw runtime unavailable - Python 3.11+ not found"
+        Write-Warn "jiuwen runtime unavailable - Python 3.11+ not found"
         return $false
     }
 
-    Write-Host "  Preparing jiuwenClaw runtime..."
+    Write-Host "  Preparing jiuwen runtime..."
     try {
         Push-Location $appDir
         & $pythonCommand @pythonArgs -m venv ".venv"
@@ -525,13 +525,70 @@ function Ensure-WindowsJiuwenClawRuntime {
         }
         & $venvPython -m pip install -e .
         if ($LASTEXITCODE -ne 0) {
-            throw "jiuwenClaw dependency install failed"
+            throw "jiuwen dependency install failed"
         }
-        Write-Ok "jiuwenClaw runtime prepared"
+        Write-Ok "jiuwen runtime prepared"
         return $true
     } catch {
-        Write-Warn "jiuwenClaw runtime setup failed - sidecar will stay unavailable"
-        Write-InstallerExceptionDetails -Context "jiuwenClaw runtime" -ErrorRecord $_
+        Write-Warn "jiuwen runtime setup failed - sidecar will stay unavailable"
+        Write-InstallerExceptionDetails -Context "jiuwen runtime" -ErrorRecord $_
+        return $false
+    } finally {
+        Pop-Location
+    }
+}
+
+function Ensure-WindowsDareRuntime {
+    param([string]$ProjectRoot)
+
+    if (-not $ProjectRoot) {
+        return $false
+    }
+
+    $appDir = Join-Path $ProjectRoot "vendor\dare-cli"
+    $appEntry = Join-Path $appDir "client\__main__.py"
+    if (-not (Test-Path $appEntry)) {
+        return $false
+    }
+
+    $venvPython = Join-Path $appDir ".venv\Scripts\python.exe"
+    if (Test-Path $venvPython) {
+        return $true
+    }
+
+    $pythonCommand = Resolve-ToolCommandWithRetry -Name "python" -Attempts 2
+    $pythonArgs = @()
+    if (-not $pythonCommand) {
+        $pythonCommand = Resolve-ToolCommandWithRetry -Name "py" -Attempts 2
+        if ($pythonCommand) {
+            $pythonArgs = @("-3")
+        }
+    }
+    if (-not $pythonCommand) {
+        Write-Warn "DARE runtime unavailable - Python 3.11+ not found"
+        return $false
+    }
+
+    Write-Host "  Preparing DARE runtime..."
+    try {
+        Push-Location $appDir
+        & $pythonCommand @pythonArgs -m venv ".venv"
+        if ($LASTEXITCODE -ne 0) {
+            throw "python -m venv failed"
+        }
+        & $venvPython -m pip install --upgrade pip setuptools wheel
+        if ($LASTEXITCODE -ne 0) {
+            throw "pip bootstrap failed"
+        }
+        & $venvPython -m pip install -r requirements.txt "httpx[socks]"
+        if ($LASTEXITCODE -ne 0) {
+            throw "DARE dependency install failed"
+        }
+        Write-Ok "DARE runtime prepared"
+        return $true
+    } catch {
+        Write-Warn "DARE runtime setup failed - client will stay unavailable"
+        Write-InstallerExceptionDetails -Context "DARE runtime" -ErrorRecord $_
         return $false
     } finally {
         Pop-Location
@@ -605,6 +662,21 @@ function Set-GeminiApiKeyMode {
     if ($Model) { Set-InstallerEnvValue $State "CAT_GEMINI_MODEL" $Model } else { Add-InstallerEnvDelete $State "CAT_GEMINI_MODEL" }
 }
 
+function Set-ModelArtsCustomEnv {
+    param($State)
+
+    Set-InstallerEnvValue $State "CAT_CAFE_ALLOWED_CLIENTS" "opencode,dare,relayclaw"
+    Set-InstallerEnvValue $State "CAT_CAFE_VISIBLE_BUILTIN_AUTH_CLIENTS" ""
+    Add-InstallerEnvDelete $State "CODEX_AUTH_MODE"
+    Add-InstallerEnvDelete $State "OPENAI_API_KEY"
+    Add-InstallerEnvDelete $State "OPENAI_BASE_URL"
+    Add-InstallerEnvDelete $State "OPENAI_API_BASE"
+    Add-InstallerEnvDelete $State "CAT_CODEX_MODEL"
+    Add-InstallerEnvDelete $State "GEMINI_API_KEY"
+    Add-InstallerEnvDelete $State "GEMINI_BASE_URL"
+    Add-InstallerEnvDelete $State "CAT_GEMINI_MODEL"
+}
+
 function Set-ClaudeInstallerProfile {
     param($State, [string]$ApiKey, [string]$BaseUrl, [string]$Model)
 
@@ -646,119 +718,9 @@ function Read-InstallerSecret {
 function Configure-InstallerAuth {
     param([string]$ProjectRoot, $State)
 
-    $hasClaude = $null -ne (Resolve-ToolCommandWithRetry -Name "claude" -Attempts 6)
-    $hasCodex = $null -ne (Resolve-ToolCommandWithRetry -Name "codex" -Attempts 6)
-    $hasGemini = $null -ne (Resolve-ToolCommandWithRetry -Name "gemini" -Attempts 6)
-    $isInteractive = [Environment]::UserInteractive -and -not $env:CI
-
-    if (-not $isInteractive) {
-        Write-Warn "Non-interactive mode - skipping auth prompts. Run claude / codex / gemini manually after install."
-        return
-    }
-
-    if ($hasClaude) {
-        Write-Host ""
-        Write-Host "  Claude (claude):"
-        $hasExistingProfile = Test-Path (Join-Path $ProjectRoot ".cat-cafe/provider-profiles.json")
-        $claudeOptions = @()
-        if ($hasExistingProfile) {
-            $claudeOptions += @{ Label = "&Keep existing"; Help = "Keep the current Claude auth configuration"; Value = "keep" }
-        }
-        $claudeOptions += @(
-            @{ Label = if ($hasExistingProfile) { "&OAuth" } else { "&OAuth (recommended)" }; Help = "Use Claude subscription / OAuth"; Value = "oauth" },
-            @{ Label = "&API Key"; Help = "Write an installer-managed Claude API key profile"; Value = "api_key" },
-            @{ Label = "&Skip"; Help = "Skip Claude auth setup for now"; Value = "skip" }
-        )
-        $choice = Select-InstallerChoice -Title "Claude auth" -Prompt "Choose how to configure Claude" -Options $claudeOptions
-        if ($choice -eq "keep") {
-            Write-Ok "Claude: keeping existing configuration"
-        } elseif ($choice -eq "api_key") {
-            $apiKey = Read-InstallerSecret "    API Key"
-            $baseUrl = Read-Host "    Base URL (Enter = https://api.anthropic.com)"
-            $model = Read-Host "    Model (Enter = default)"
-            if ($apiKey) {
-                Set-ClaudeInstallerProfile $State $apiKey $baseUrl $model
-                Write-Ok "Claude API key profile written to .cat-cafe/"
-            } else {
-                Remove-ClaudeInstallerProfile $State
-                Write-Warn "Claude API key empty - keeping OAuth"
-            }
-        } elseif ($choice -eq "oauth") {
-            Remove-ClaudeInstallerProfile $State
-            Write-Ok "Claude: OAuth mode"
-        } else {
-            Write-Warn "Claude auth setup skipped"
-        }
-    }
-
-    if ($hasCodex) {
-        Write-Host ""
-        Write-Host "  Codex (codex):"
-        $existingCodexKey = Get-InstallerEnvValueFromFile -EnvFile (Join-Path $ProjectRoot ".env") -Key "OPENAI_API_KEY"
-        $codexOptions = @()
-        if ($existingCodexKey) {
-            $codexOptions += @{ Label = "&Keep existing"; Help = "Keep the current Codex auth configuration"; Value = "keep" }
-        }
-        $codexOptions += @(
-            @{ Label = if ($existingCodexKey) { "&OAuth" } else { "&OAuth (recommended)" }; Help = "Use Codex OAuth / subscription"; Value = "oauth" },
-            @{ Label = "&API Key"; Help = "Store OpenAI API settings in .env"; Value = "api_key" },
-            @{ Label = "&Skip"; Help = "Skip Codex auth setup for now"; Value = "skip" }
-        )
-        $choice = Select-InstallerChoice -Title "Codex auth" -Prompt "Choose how to configure Codex" -Options $codexOptions
-        if ($choice -eq "keep") {
-            Write-Ok "Codex: keeping existing configuration"
-        } elseif ($choice -eq "api_key") {
-            $apiKey = Read-InstallerSecret "    API Key"
-            $baseUrl = Read-Host "    Base URL (Enter = default)"
-            $model = Read-Host "    Model (Enter = default)"
-            if ($apiKey) {
-                Set-CodexApiKeyMode $State $apiKey $baseUrl $model
-                Write-Ok "Codex API key collected for .env"
-            } else {
-                Set-CodexOAuthMode $State
-                Write-Warn "Codex API key empty - keeping OAuth"
-            }
-        } elseif ($choice -eq "oauth") {
-            Set-CodexOAuthMode $State
-            Write-Ok "Codex: OAuth mode"
-        } else {
-            Write-Warn "Codex auth setup skipped"
-        }
-    }
-
-    if ($hasGemini) {
-        Write-Host ""
-        Write-Host "  Gemini (gemini):"
-        $existingGeminiKey = Get-InstallerEnvValueFromFile -EnvFile (Join-Path $ProjectRoot ".env") -Key "GEMINI_API_KEY"
-        $geminiOptions = @()
-        if ($existingGeminiKey) {
-            $geminiOptions += @{ Label = "&Keep existing"; Help = "Keep the current Gemini auth configuration"; Value = "keep" }
-        }
-        $geminiOptions += @(
-            @{ Label = if ($existingGeminiKey) { "&OAuth" } else { "&OAuth (recommended)" }; Help = "Use Gemini OAuth / subscription"; Value = "oauth" },
-            @{ Label = "&API Key"; Help = "Store Gemini API settings in .env"; Value = "api_key" },
-            @{ Label = "&Skip"; Help = "Skip Gemini auth setup for now"; Value = "skip" }
-        )
-        $choice = Select-InstallerChoice -Title "Gemini auth" -Prompt "Choose how to configure Gemini" -Options $geminiOptions
-        if ($choice -eq "keep") {
-            Write-Ok "Gemini: keeping existing configuration"
-        } elseif ($choice -eq "api_key") {
-            $apiKey = Read-InstallerSecret "    API Key"
-            $model = Read-Host "    Model (Enter = default)"
-            if ($apiKey) {
-                Set-GeminiApiKeyMode $State $apiKey $model
-                Write-Ok "Gemini API key collected for .env"
-            } else {
-                Set-GeminiOAuthMode $State
-                Write-Warn "Gemini API key empty - keeping OAuth"
-            }
-        } elseif ($choice -eq "oauth") {
-            Set-GeminiOAuthMode $State
-            Write-Ok "Gemini: OAuth mode"
-        } else {
-            Write-Warn "Gemini auth setup skipped"
-        }
-    }
+    Invoke-InstallerAuthHelper $State @("modelarts-preset", "apply", "--project-dir", $ProjectRoot)
+    Set-ModelArtsCustomEnv $State
+    Write-Ok "ModelArts preset written: 3 cats / shared glm-5 profile / opencode+dare+jiuwen only"
 }
 
 function Apply-InstallerAuthEnv {

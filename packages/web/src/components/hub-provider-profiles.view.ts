@@ -25,7 +25,10 @@ function inferBuiltinClient(profile: ProfileItem): BuiltinAccountClient | undefi
   return undefined;
 }
 
-export function ensureBuiltinProviderProfiles(profiles: ProfileItem[]): ProfileItem[] {
+export function ensureBuiltinProviderProfiles(
+  profiles: ProfileItem[],
+  visibleBuiltinClients?: BuiltinAccountClient[],
+): ProfileItem[] {
   const normalized = profiles.map((profile) => {
     if (!profile.builtin) return profile;
     const client = inferBuiltinClient(profile);
@@ -39,7 +42,12 @@ export function ensureBuiltinProviderProfiles(profiles: ProfileItem[]): ProfileI
       .filter(Boolean) as BuiltinAccountClient[],
   );
 
-  for (const spec of FALLBACK_BUILTIN_PROFILE_SPECS) {
+  const fallbackSpecs =
+    visibleBuiltinClients === undefined
+      ? FALLBACK_BUILTIN_PROFILE_SPECS
+      : FALLBACK_BUILTIN_PROFILE_SPECS.filter((spec) => visibleBuiltinClients.includes(spec.client));
+
+  for (const spec of fallbackSpecs) {
     if (seenBuiltinClients.has(spec.client)) continue;
     normalized.push({
       id: spec.id,

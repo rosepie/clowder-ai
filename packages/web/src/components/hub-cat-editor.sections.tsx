@@ -214,7 +214,7 @@ function buildCallHint(client: string, profile: ProfileItem | undefined, model: 
   const hasV1Suffix = /\/v1$/i.test(base);
 
   if (client === 'relayclaw') {
-    return `jiuwenClaw 会启动本地 sidecar，并把该 OpenAI-compatible 端点注入为 API_BASE: ${base}`;
+    return `jiuwen 会启动本地 sidecar，并把该 OpenAI-compatible 端点注入为 API_BASE: ${base}`;
   }
 
   // Claude CLI internally adds /v1, so if user already has /v1 it will become /v1/v1

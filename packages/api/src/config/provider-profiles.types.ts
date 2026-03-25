@@ -43,6 +43,7 @@ export interface ProviderProfilesView {
   activeProfileId: string | null;
   providers: ProviderProfileView[];
   bootstrapBindings: BootstrapBindings;
+  visibleBuiltinClients?: BuiltinAccountClient[];
 }
 
 export interface CreateProviderProfileInput {

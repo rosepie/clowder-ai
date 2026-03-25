@@ -216,6 +216,46 @@ cat .env
   }
 });
 
+test('install script applies ModelArts custom env gates and clears stale builtin auth keys', () => {
+  const envRoot = mkdtempSync(join(tmpdir(), 'clowder-install-modelarts-env-'));
+
+  try {
+    writeFileSync(
+      join(envRoot, '.env'),
+      `CODEX_AUTH_MODE='oauth'
+OPENAI_API_KEY='old-openai-key'
+OPENAI_BASE_URL='https://old.example/v1'
+CAT_CODEX_MODEL='gpt-old'
+GEMINI_API_KEY='old-gemini-key'
+GEMINI_BASE_URL='https://gemini.example'
+CAT_GEMINI_MODEL='gemini-old'
+`,
+      'utf8',
+    );
+
+    const output = runSourceOnlySnippet(`
+cd "${envRoot}"
+reset_env_changes
+apply_modelarts_custom_env
+for key in "\${ENV_DELETE_KEYS[@]}"; do delete_env_key "$key"; done
+for i in "\${!ENV_KEYS[@]}"; do write_env_key "\${ENV_KEYS[$i]}" "\${ENV_VALUES[$i]}"; done
+cat .env
+`);
+
+    assert.match(output, /^CAT_CAFE_ALLOWED_CLIENTS='opencode,dare,relayclaw'$/m);
+    assert.match(output, /^CAT_CAFE_VISIBLE_BUILTIN_AUTH_CLIENTS=''$/m);
+    assert.doesNotMatch(output, /^CODEX_AUTH_MODE=/m);
+    assert.doesNotMatch(output, /^OPENAI_API_KEY=/m);
+    assert.doesNotMatch(output, /^OPENAI_BASE_URL=/m);
+    assert.doesNotMatch(output, /^CAT_CODEX_MODEL=/m);
+    assert.doesNotMatch(output, /^GEMINI_API_KEY=/m);
+    assert.doesNotMatch(output, /^GEMINI_BASE_URL=/m);
+    assert.doesNotMatch(output, /^CAT_GEMINI_MODEL=/m);
+  } finally {
+    rmSync(envRoot, { recursive: true, force: true });
+  }
+});
+
 test('use_registry sets only env vars without writing to user npmrc', () => {
   const tmpHome = mkdtempSync(join(tmpdir(), 'clowder-install-registry-'));
 

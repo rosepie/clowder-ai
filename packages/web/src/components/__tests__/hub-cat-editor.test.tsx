@@ -33,7 +33,7 @@ const ALL_CLIENTS_RESPONSE = {
     { id: 'google', label: 'Gemini', command: 'gemini', available: true },
     { id: 'dare', label: 'Dare', command: 'dare', available: true },
     { id: 'opencode', label: 'OpenCode', command: 'opencode', available: true },
-    { id: 'relayclaw', label: 'jiuwenClaw', command: 'jiuwenclaw-app', available: true },
+    { id: 'relayclaw', label: 'jiuwen', command: 'jiuwenclaw-app', available: true },
     { id: 'antigravity', label: 'Antigravity', command: 'antigravity', available: true },
   ],
 };
