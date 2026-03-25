@@ -105,11 +105,9 @@ function SkillList({
 
   return (
     <div>
-      {showPagination && (
-        <p className="text-[10px] text-gray-400 mb-2">
-          共 {results.total} 个结果，第 {results.page} 页
-        </p>
-      )}
+      <p className="text-[10px] text-gray-400 mb-2">
+        共 {results.total} 条{showPagination && `，第 ${results.page} 页`}
+      </p>
       <div className="space-y-1.5">
         {results.skills.map((skill) => (
           <div
