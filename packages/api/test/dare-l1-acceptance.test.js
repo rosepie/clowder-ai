@@ -53,9 +53,9 @@ describe('DARE L1 acceptance contract', () => {
     assert.ok(types.includes('session_init'));
     assert.ok(types.includes('tool_use'));
     assert.ok(types.includes('tool_result'));
-    assert.ok(types.includes('system_info'));
     assert.ok(types.includes('text'));
     assert.ok(types.includes('error'));
+    assert.ok(!types.includes('system_info'));
 
     const text = messages.find((m) => m.type === 'text');
     assert.equal(text?.content, 'done output');

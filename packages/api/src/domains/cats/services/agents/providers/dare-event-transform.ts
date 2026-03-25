@@ -12,9 +12,10 @@
  *   tool.error       → tool_result (with error content)
  *   task.completed   → text (rendered_output is the agent's final answer)
  *   task.failed      → error
- *   approval.pending → system_info
+ *   approval.pending → null (skip transient full-auto approval noise)
  *   Others (log.*, transport.*, model.response, plan.*) → null (skip)
  */
+
 
 import type { CatId } from '@cat-cafe/shared';
 import type { AgentMessage } from '../../types.js';
@@ -123,12 +124,7 @@ export function transformDareEvent(event: unknown, catId: CatId | string): Agent
     }
 
     case 'approval.pending':
-      return {
-        type: 'system_info',
-        catId: catId as CatId,
-        content: `DARE approval pending: ${str(data.tool_name, 'unknown tool')}`,
-        timestamp: ts,
-      };
+      return null;
 
     default:
       return null;
