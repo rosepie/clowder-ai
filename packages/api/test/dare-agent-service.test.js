@@ -255,15 +255,27 @@ describe('DareAgentService', () => {
       JSON.stringify({ llm: { adapter: 'huawei-modelarts', model: 'glm-5' } }),
       'utf8',
     );
-    const service = new DareAgentService({ catId: 'dare', spawnFn, darePath: '/opt/dare' });
-    const promise = collect(service.invoke('Test', { workingDirectory: root }));
-    emitDareEvents(proc, [SESSION_STARTED, TASK_COMPLETED]);
-    const messages = await promise;
+    // Isolate from real env to avoid getCatModel() short-circuiting workspace display
+    const oldOverride = process.env.CAT_CAFE_DARE_MODEL_OVERRIDE;
+    const oldCatModel = process.env.CAT_DARE_MODEL;
+    delete process.env.CAT_CAFE_DARE_MODEL_OVERRIDE;
+    delete process.env.CAT_DARE_MODEL;
+    try {
+      const service = new DareAgentService({ catId: 'dare', spawnFn, darePath: '/opt/dare' });
+      const promise = collect(service.invoke('Test', { workingDirectory: root }));
+      emitDareEvents(proc, [SESSION_STARTED, TASK_COMPLETED]);
+      const messages = await promise;
 
-    const textMsg = messages.find((m) => m.type === 'text');
-    assert.ok(textMsg.metadata);
-    assert.strictEqual(textMsg.metadata.provider, 'dare');
-    assert.strictEqual(textMsg.metadata.model, 'huawei-modelarts/glm-5');
+      const textMsg = messages.find((m) => m.type === 'text');
+      assert.ok(textMsg.metadata);
+      assert.strictEqual(textMsg.metadata.provider, 'dare');
+      assert.strictEqual(textMsg.metadata.model, 'huawei-modelarts/glm-5');
+    } finally {
+      if (oldOverride !== undefined) process.env.CAT_CAFE_DARE_MODEL_OVERRIDE = oldOverride;
+      else delete process.env.CAT_CAFE_DARE_MODEL_OVERRIDE;
+      if (oldCatModel !== undefined) process.env.CAT_DARE_MODEL = oldCatModel;
+      else delete process.env.CAT_DARE_MODEL;
+    }
   });
 
   test('metadata.sessionId set after session_init', async () => {
@@ -665,6 +677,34 @@ describe('DareAgentService', () => {
     } finally {
       if (oldOverride !== undefined) process.env.CAT_CAFE_DARE_MODEL_OVERRIDE = oldOverride;
       else delete process.env.CAT_CAFE_DARE_MODEL_OVERRIDE;
+      if (oldCatModel !== undefined) process.env.CAT_DARE_MODEL = oldCatModel;
+      else delete process.env.CAT_DARE_MODEL;
+    }
+  });
+
+  // P3: whitespace-only model override must not short-circuit getCatModel fallback
+  test('whitespace-only options.model does not short-circuit getCatModel fallback', async () => {
+    const proc = createMockProcess();
+    const spawnFn = mock.fn(() => proc);
+    const oldCatModel = process.env.CAT_DARE_MODEL;
+    process.env.CAT_DARE_MODEL = 'glm-5';
+
+    try {
+      const service = new DareAgentService({
+        catId: 'dare',
+        spawnFn,
+        darePath: '/opt/dare',
+        model: '   ',  // whitespace-only — must not be treated as explicit model
+      });
+      const promise = collect(service.invoke('Test whitespace model'));
+      emitDareEvents(proc, [SESSION_STARTED, TASK_COMPLETED]);
+      await promise;
+
+      const args = spawnFn.mock.calls[0].arguments[1];
+      const modelIdx = args.indexOf('--model');
+      assert.ok(modelIdx >= 0, `expected --model from getCatModel fallback: ${args}`);
+      assert.strictEqual(args[modelIdx + 1], 'glm-5');
+    } finally {
       if (oldCatModel !== undefined) process.env.CAT_DARE_MODEL = oldCatModel;
       else delete process.env.CAT_DARE_MODEL;
     }
