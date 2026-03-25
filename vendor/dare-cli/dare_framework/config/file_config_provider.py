@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import os
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -74,7 +75,18 @@ class FileConfigProvider(IConfigProvider):
         merged = _merge_layers([user_layer, workspace_layer])
         merged.setdefault("workspace_dir", str(self._workspace_dir))
         merged.setdefault("user_dir", str(self._user_dir))
-        return Config.from_dict(merged)
+        config = Config.from_dict(merged)
+        # Allow host process to inject absolute skill paths via env var,
+        # overriding workspace-relative config (e.g. when workspace != main repo).
+        env_skill_paths = os.environ.get("DARE_SKILL_PATHS")
+        if env_skill_paths:
+            try:
+                paths = json.loads(env_skill_paths)
+                if isinstance(paths, list) and paths:
+                    config = replace(config, skill_paths=[str(p) for p in paths])
+            except (json.JSONDecodeError, TypeError):
+                pass
+        return config
 
     def _load_layer(self, base_dir: Path) -> dict[str, Any]:
         path = base_dir / self.filename

@@ -388,6 +388,16 @@ export class DareAgentService implements AgentService {
     // Normalize generic override into provider-specific env only.
     env[DARE_API_KEY_ENV] = null;
     env[DARE_ENDPOINT_ENV] = null;
+
+    // Inject absolute skill paths so DARE can find cat-cafe-skills
+    // regardless of which workspace directory the thread uses.
+    // Derive project root from vendor/dare-cli path (sibling to cat-cafe-skills/).
+    const projectRoot = resolve(resolveVendorDarePath(), '..', '..');
+    const catCafeSkillsDir = join(projectRoot, 'cat-cafe-skills');
+    if (existsSync(catCafeSkillsDir)) {
+      env.DARE_SKILL_PATHS = JSON.stringify([catCafeSkillsDir]);
+    }
+
     return env;
   }
 

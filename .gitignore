@@ -31,7 +31,8 @@ packages/web/public/worker-*.js
 .gemini/
 .kiro/
 .trae/
-.dare/
+.dare/*
+!.dare/config.json
 .codex/
 .gemini/
 *.swp
