@@ -1331,6 +1331,8 @@ async function main(): Promise<void> {
       (connectorHubOpts as { weixinAdapter?: unknown }).weixinAdapter = connectorGatewayHandle.weixinAdapter;
       (connectorHubOpts as { startWeixinPolling?: () => void }).startWeixinPolling =
         connectorGatewayHandle.startWeixinPolling;
+      // F134 Phase D: Wire permission store to hub routes
+      (connectorHubOpts as { permissionStore?: unknown }).permissionStore = connectorGatewayHandle.permissionStore;
       app.log.info('[api] Connector gateway started');
     }
   } catch (err) {
