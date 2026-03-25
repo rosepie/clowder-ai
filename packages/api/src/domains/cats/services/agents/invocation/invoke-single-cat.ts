@@ -733,7 +733,9 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
     // are both handled identically: generate a per-catId runtime config, assemble provider/model.
     const ocProviderName = catConfig?.ocProviderName?.trim();
     if (provider === 'opencode' && resolvedAccount?.authType === 'api_key' && ocProviderName && defaultModel) {
-      const assembledModel = defaultModel.includes('/') ? defaultModel : `${ocProviderName}/${defaultModel}`;
+      const assembledModel = defaultModel.startsWith(`${ocProviderName}/`)
+        ? defaultModel
+        : `${ocProviderName}/${defaultModel}`;
       callbackEnv.CAT_CAFE_ANTHROPIC_MODEL_OVERRIDE = assembledModel;
       try {
         // Infer apiType from ocProviderName (not effectiveProtocol — protocol UI was removed).
@@ -741,11 +743,17 @@ export async function* invokeSingleCat(deps: InvocationDeps, params: InvocationP
         // their native adapters. This covers maas, deepseek, openrouter, etc. as openai.
         const apiType: 'openai' | 'anthropic' | 'google' =
           ocProviderName === 'anthropic' ? 'anthropic' : ocProviderName === 'google' ? 'google' : 'openai';
+        // Strip ocProviderName/ prefix from model IDs — OpenCode runtime config keys
+        // must be bare model names (the part after provider/), not provider-qualified.
+        const rawModels = resolvedAccount.models ?? [defaultModel];
+        const prefix = `${ocProviderName}/`;
+        const bareModels = rawModels.map((m: string) => (m.startsWith(prefix) ? m.slice(prefix.length) : m));
         const configPath = writeOpenCodeRuntimeConfig(projectRoot, catId as string, {
           providerName: ocProviderName,
-          models: resolvedAccount.models ?? [defaultModel],
+          models: bareModels,
           defaultModel: assembledModel,
           apiType,
+          hasBaseUrl: !!resolvedAccount.baseUrl,
         });
         callbackEnv.OPENCODE_CONFIG = configPath;
         if (resolvedAccount.apiKey) callbackEnv[OC_API_KEY_ENV] = resolvedAccount.apiKey;

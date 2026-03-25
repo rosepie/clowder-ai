@@ -38,7 +38,10 @@ export interface WindowsShimSpawn {
  *   1. `%~dp0\node_modules\pkg\cli.js` (classic, with %~dp0)
  *   2. `"%dp0%\node_modules\pkg\bin\cmd"` (newer, with %dp0% and possibly no .js extension)
  *
- * Returns the first resolved path that exists on disk, or null.
+ * Portable Node installs may have `%~dp0\node.exe` as a prelude — we skip
+ * .exe targets since those are the launcher, not the script entry point.
+ *
+ * Returns the first resolved non-exe path that exists on disk, or null.
  */
 function parseShimScriptTarget(cmdPath: string): string | null {
   const shimContent = readFileSync(cmdPath, 'utf-8');
@@ -50,6 +53,10 @@ function parseShimScriptTarget(cmdPath: string): string | null {
   // then verify the path exists on disk.
   for (const match of shimContent.matchAll(/%~?dp0%?\\([^"%\r\n]+)/gi)) {
     const relPath = match[1].replace(/%\*$/g, '').trimEnd();
+    // Skip .exe targets — these are the Node launcher prelude, not the script entry point.
+    // Portable Node installs place node.exe alongside the shim, and the regex would match it
+    // first, causing `node node.exe` (MZ SyntaxError). See #247.
+    if (/\.exe$/i.test(relPath)) continue;
     const scriptPath = join(shimDir, relPath.replace(/\\/g, '/'));
     if (existsSync(scriptPath)) return scriptPath;
   }
