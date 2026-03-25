@@ -10,7 +10,13 @@ import { createCatId } from './ids.js';
 /**
  * AI provider behind a cat
  */
-export type CatProvider = 'anthropic' | 'openai' | 'google' | 'dare' | 'antigravity' | 'opencode' | 'a2a';
+/**
+ * Known built-in providers. The runtime accepts any string so that new
+ * providers introduced in config don't break older code — unknown values
+ * fall through to `default` branches in switch statements.
+ */
+export type KnownCatProvider = 'anthropic' | 'openai' | 'google' | 'dare' | 'antigravity' | 'opencode' | 'a2a';
+export type CatProvider = string;
 
 /**
  * Cat status in the system

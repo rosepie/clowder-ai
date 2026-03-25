@@ -1,10 +1,15 @@
 import type { CatProvider } from '@cat-cafe/shared';
+import { createModuleLogger } from '../infrastructure/logger.js';
 import type {
   BuiltinAccountClient,
   ProviderProfileKind,
   ProviderProfileProtocol,
   RuntimeProviderProfile,
 } from './provider-profiles.types.js';
+
+const log = createModuleLogger('provider-binding');
+
+const KNOWN_PROVIDERS = new Set(['anthropic', 'openai', 'google', 'dare', 'opencode', 'antigravity', 'a2a']);
 
 export function resolveBuiltinClientForProvider(provider: CatProvider): BuiltinAccountClient | null {
   switch (provider) {
@@ -19,6 +24,9 @@ export function resolveBuiltinClientForProvider(provider: CatProvider): BuiltinA
     case 'opencode':
       return 'opencode';
     default:
+      if (!KNOWN_PROVIDERS.has(provider)) {
+        log.info({ provider }, 'unknown provider — no builtin client mapping, will use generic path');
+      }
       return null;
   }
 }
@@ -34,6 +42,9 @@ function resolveExpectedProtocolForProvider(provider: CatProvider): ProviderProf
     case 'google':
       return 'google';
     default:
+      if (!KNOWN_PROVIDERS.has(provider)) {
+        log.info({ provider }, 'unknown provider — no protocol mapping');
+      }
       return null;
   }
 }
