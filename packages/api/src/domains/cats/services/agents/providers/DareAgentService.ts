@@ -40,9 +40,9 @@ function resolveDefaultDareMcpServerPath(cwd = process.cwd()): string | undefine
 
 interface DareAgentServiceOptions {
   catId?: CatId;
-  /** DARE adapter: 'openrouter' | 'openai' | 'anthropic' (default: 'openrouter') */
+  /** DARE adapter override. Omit to honor workspace .dare/config.json. */
   adapter?: string;
-  /** Model name (e.g. 'z-ai/glm-4.7' | 'claude-3-7-sonnet-latest') */
+  /** Model override. Omit to honor workspace .dare/config.json. */
   model?: string;
   /** Optional endpoint override (maps to DARE CLI --endpoint) */
   endpoint?: string;
@@ -59,7 +59,6 @@ interface DareAgentServiceOptions {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
-const DEFAULT_KEY_ENV = 'OPENAI_API_KEY';
 const DARE_API_KEY_ENV = 'DARE_API_KEY';
 const DARE_ENDPOINT_ENV = 'DARE_ENDPOINT';
 
@@ -67,12 +66,14 @@ const ADAPTER_KEY_ENV: Record<string, string> = {
   openai: 'OPENAI_API_KEY',
   openrouter: 'OPENROUTER_API_KEY',
   anthropic: 'ANTHROPIC_API_KEY',
+  'huawei-modelarts': 'HUAWEI_MODELARTS_API_KEY',
 };
 
 const ADAPTER_ENDPOINT_ENV: Record<string, string> = {
   openai: 'OPENAI_BASE_URL',
   openrouter: 'OPENROUTER_BASE_URL',
   anthropic: 'ANTHROPIC_BASE_URL',
+  'huawei-modelarts': 'HUAWEI_MODELARTS_BASE_URL',
 };
 
 /**
@@ -106,8 +107,8 @@ function resolveDefaultDarePath(): string | undefined {
 
 export class DareAgentService implements AgentService {
   readonly catId: CatId;
-  private readonly adapter: string;
-  private readonly model: string;
+  private readonly adapter: string | undefined;
+  private readonly model: string | undefined;
   private readonly endpoint: string | undefined;
   private readonly apiKey: string | undefined;
   private readonly darePath: string | undefined;
@@ -116,11 +117,9 @@ export class DareAgentService implements AgentService {
 
   constructor(options?: DareAgentServiceOptions) {
     this.catId = options?.catId ?? createCatId('dare');
-    this.adapter = options?.adapter ?? process.env.DARE_ADAPTER ?? 'openrouter';
-    // P1-2: Use unified model resolution chain (env CAT_*_MODEL > cat-config > fallback)
-    this.model = options?.model ?? getCatModel(this.catId as string);
-    this.endpoint =
-      options?.endpoint ?? process.env[DARE_ENDPOINT_ENV] ?? process.env[this.getAdapterEndpointEnvName()];
+    this.adapter = options?.adapter ?? process.env.DARE_ADAPTER;
+    this.model = options?.model ?? process.env.CAT_CAFE_DARE_MODEL_OVERRIDE;
+    this.endpoint = options?.endpoint ?? process.env[DARE_ENDPOINT_ENV];
     this.apiKey = options?.apiKey ?? process.env[DARE_API_KEY_ENV];
     this.darePath = options?.darePath ?? process.env.DARE_PATH ?? resolveDefaultDarePath();
     const configuredMcp = options?.mcpServerPath ?? process.env.CAT_CAFE_MCP_SERVER_PATH;
@@ -134,10 +133,12 @@ export class DareAgentService implements AgentService {
 
   async *invoke(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
     const effectiveModel = options?.callbackEnv?.CAT_CAFE_DARE_MODEL_OVERRIDE ?? this.model;
+    const metadataModel = effectiveModel ?? getCatModel(this.catId as string);
+
     // Runtime mode: require resolvable DARE module path to avoid opaque "No module named client".
     // Unit tests pass spawnFn and may not provide a real filesystem path; skip hard check there.
     if (!this.darePath && !this.spawnFn) {
-      const metadata: MessageMetadata = { provider: 'dare', model: effectiveModel };
+      const metadata: MessageMetadata = { provider: 'dare', model: metadataModel };
       yield {
         type: 'error',
         catId: this.catId,
@@ -149,7 +150,7 @@ export class DareAgentService implements AgentService {
       return;
     }
     if (this.darePath && !this.spawnFn && !existsSync(join(this.darePath, 'client', '__main__.py'))) {
-      const metadata: MessageMetadata = { provider: 'dare', model: effectiveModel };
+      const metadata: MessageMetadata = { provider: 'dare', model: metadataModel };
       yield {
         type: 'error',
         catId: this.catId,
@@ -178,7 +179,7 @@ export class DareAgentService implements AgentService {
     const pythonCmd = cwd ? resolveVenvPython(cwd) : 'python';
     // P1-3: Pass API key via child env, not CLI args (avoids ps/audit leakage)
     const childEnv = this.buildEnv(options?.callbackEnv);
-    const metadata: MessageMetadata = { provider: 'dare', model: effectiveModel };
+    const metadata: MessageMetadata = { provider: 'dare', model: metadataModel };
     let sessionInitEmitted = false;
 
     try {
@@ -283,10 +284,12 @@ export class DareAgentService implements AgentService {
     },
   ): string[] {
     const args = ['-m', 'client'];
-    const effectiveModel = opts?.model ?? this.model;
-
-    args.push('--adapter', this.adapter);
-    args.push('--model', effectiveModel);
+    if (this.adapter) {
+      args.push('--adapter', this.adapter);
+    }
+    if (opts?.model) {
+      args.push('--model', opts.model);
+    }
     if (opts?.endpoint) {
       args.push('--endpoint', opts.endpoint);
     }
@@ -327,29 +330,34 @@ export class DareAgentService implements AgentService {
 
   private buildEnv(callbackEnv?: Record<string, string>): Record<string, string | null> {
     const env: Record<string, string | null> = { ...callbackEnv };
-    // P1-3: Pass API key via env vars (not CLI args) to avoid ps/audit leakage
-    const apiKeyEnvName = this.getAdapterApiKeyEnvName();
+    const apiKeyEnvName = this.adapter ? ADAPTER_KEY_ENV[this.adapter] : undefined;
     const apiKey =
-      callbackEnv?.[DARE_API_KEY_ENV] ?? callbackEnv?.[apiKeyEnvName] ?? this.apiKey ?? process.env[apiKeyEnvName];
-    if (apiKey) {
+      callbackEnv?.[DARE_API_KEY_ENV] ??
+      (apiKeyEnvName ? callbackEnv?.[apiKeyEnvName] : undefined) ??
+      this.apiKey ??
+      (apiKeyEnvName ? process.env[apiKeyEnvName] : undefined);
+
+    if (apiKey && apiKeyEnvName) {
       env[apiKeyEnvName] = apiKey;
     }
+
     // Normalize generic override into provider-specific env only.
     env[DARE_API_KEY_ENV] = null;
     env[DARE_ENDPOINT_ENV] = null;
     return env;
   }
 
-  private getAdapterApiKeyEnvName(): string {
-    return ADAPTER_KEY_ENV[this.adapter] ?? DEFAULT_KEY_ENV;
-  }
-
-  private getAdapterEndpointEnvName(): string {
-    return ADAPTER_ENDPOINT_ENV[this.adapter] ?? 'OPENAI_BASE_URL';
+  private getAdapterEndpointEnvName(): string | undefined {
+    return this.adapter ? ADAPTER_ENDPOINT_ENV[this.adapter] : undefined;
   }
 
   private resolveEndpoint(callbackEnv?: Record<string, string>): string | undefined {
     const adapterEndpointEnv = this.getAdapterEndpointEnvName();
-    return callbackEnv?.[DARE_ENDPOINT_ENV] ?? callbackEnv?.[adapterEndpointEnv] ?? this.endpoint;
+    return (
+      callbackEnv?.[DARE_ENDPOINT_ENV] ??
+      (adapterEndpointEnv ? callbackEnv?.[adapterEndpointEnv] : undefined) ??
+      this.endpoint ??
+      (adapterEndpointEnv ? process.env[adapterEndpointEnv] : undefined)
+    );
   }
 }

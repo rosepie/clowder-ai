@@ -152,26 +152,20 @@ describe('DareAgentService', () => {
     assert.ok(args.includes('-m') && args.includes('client'), `expected -m client in args: ${args}`);
   });
 
-  test('passes --adapter and --model', async () => {
+  test('omits --adapter and --model when no explicit override is provided', async () => {
     const proc = createMockProcess();
     const spawnFn = mock.fn(() => proc);
-    const service = new DareAgentService({
-      catId: 'dare',
-      spawnFn,
-      adapter: 'openrouter',
-      model: 'zhipu/glm-4.7',
-    });
-    const promise = collect(service.invoke('Test'));
+    const service = new DareAgentService({ catId: 'dare', spawnFn, darePath: '/opt/dare' });
+    const promise = collect(service.invoke('Test', { workingDirectory: '/tmp/project' }));
     emitDareEvents(proc, [SESSION_STARTED, TASK_COMPLETED]);
     await promise;
 
     const args = spawnFn.mock.calls[0].arguments[1];
-    const adapterIdx = args.indexOf('--adapter');
-    assert.ok(adapterIdx >= 0);
-    assert.strictEqual(args[adapterIdx + 1], 'openrouter');
-    const modelIdx = args.indexOf('--model');
-    assert.ok(modelIdx >= 0);
-    assert.strictEqual(args[modelIdx + 1], 'zhipu/glm-4.7');
+    assert.ok(!args.includes('--adapter'), `should not override adapter from workspace config: ${args}`);
+    assert.ok(!args.includes('--model'), `should not override model from workspace config: ${args}`);
+    const wsIdx = args.indexOf('--workspace');
+    assert.ok(wsIdx >= 0, `expected --workspace in args: ${args}`);
+    assert.strictEqual(args[wsIdx + 1], '/tmp/project');
   });
 
   // P1-1: cwd must ALWAYS be darePath, workingDirectory goes to --workspace
@@ -380,6 +374,35 @@ describe('DareAgentService', () => {
     }
   });
 
+  test('huawei-modelarts adapter maps generic key override to HUAWEI_MODELARTS_API_KEY', async () => {
+    const proc = createMockProcess();
+    const spawnFn = mock.fn(() => proc);
+    const oldDareKey = process.env.DARE_API_KEY;
+    const oldModelArtsKey = process.env.HUAWEI_MODELARTS_API_KEY;
+    process.env.DARE_API_KEY = 'modelarts-key';
+    delete process.env.HUAWEI_MODELARTS_API_KEY;
+
+    try {
+      const service = new DareAgentService({
+        catId: 'dare',
+        spawnFn,
+        adapter: 'huawei-modelarts',
+      });
+      const promise = collect(service.invoke('Test key mapping'));
+      emitDareEvents(proc, [SESSION_STARTED, TASK_COMPLETED]);
+      await promise;
+
+      const opts = spawnFn.mock.calls[0].arguments[2];
+      assert.strictEqual(opts.env.HUAWEI_MODELARTS_API_KEY, 'modelarts-key');
+      assert.ok(!('DARE_API_KEY' in opts.env), 'generic key should not leak to child env');
+    } finally {
+      if (oldDareKey !== undefined) process.env.DARE_API_KEY = oldDareKey;
+      else delete process.env.DARE_API_KEY;
+      if (oldModelArtsKey !== undefined) process.env.HUAWEI_MODELARTS_API_KEY = oldModelArtsKey;
+      else delete process.env.HUAWEI_MODELARTS_API_KEY;
+    }
+  });
+
   test('always yields exactly one final done', async () => {
     const proc = createMockProcess();
     const spawnFn = mock.fn(() => proc);
@@ -407,7 +430,7 @@ describe('DareAgentService', () => {
     const sidIdx = args.indexOf('--session-id');
     assert.ok(sidIdx >= 0, `expected --session-id in args: ${args}`);
     assert.strictEqual(args[sidIdx + 1], 'sess-42');
-    assert.ok(!args.includes('--resume'), `did not expect --resume in args: ${args}`);
+    assert.ok(!args.includes('--resume'), `should not use legacy --resume flag: ${args}`);
   });
 
   // P2-1: Session init dedup — only first session.started is emitted
@@ -512,10 +535,9 @@ describe('DareAgentService', () => {
     assert.ok(args.includes('--budget-tokens'), `expected --budget-tokens in args: ${args}`);
     assert.ok(args.includes('5000'), `expected 5000 in args: ${args}`);
     assert.ok(args.includes('--verbose'), `expected --verbose in args: ${args}`);
-    // cliConfigArgs should appear before --task (after run)
     const taskIdx = args.indexOf('--task');
     const budgetIdx = args.indexOf('--budget-tokens');
-    assert.ok(budgetIdx < taskIdx, `cliConfigArgs should appear before --task`);
+    assert.ok(budgetIdx < taskIdx, 'cliConfigArgs should appear before --task');
   });
 
   // F135: venv python — uses .venv/bin/python when available
@@ -558,6 +580,29 @@ describe('DareAgentService', () => {
     const command = spawnFn.mock.calls[0].arguments[0];
     assert.strictEqual(command, 'python');
   });
+
+  test('returns explicit error when darePath is missing in runtime mode', async () => {
+    const oldDarePath = process.env.DARE_PATH;
+    delete process.env.DARE_PATH;
+    try {
+      const service = new DareAgentService({ catId: 'dare', darePath: undefined });
+      const messages = await collect(service.invoke('Test missing path'));
+      const errorMsg = messages.find((m) => m.type === 'error');
+      assert.ok(errorMsg, 'expected error message');
+      assert.match(errorMsg.error, /DARE CLI 未配置路径/);
+    } finally {
+      if (oldDarePath !== undefined) process.env.DARE_PATH = oldDarePath;
+      else delete process.env.DARE_PATH;
+    }
+  });
+
+  test('returns explicit error when darePath is invalid in runtime mode', async () => {
+    const service = new DareAgentService({ catId: 'dare', darePath: '/definitely/not/a/dare/repo' });
+    const messages = await collect(service.invoke('Test invalid path'));
+    const errorMsg = messages.find((m) => m.type === 'error');
+    assert.ok(errorMsg, 'expected error message');
+    assert.match(errorMsg.error, /DARE_PATH 无效/);
+  });
 });
 
 // F135: resolveVendorDarePath — project root resolution
@@ -571,7 +616,6 @@ describe('resolveVendorDarePath (F135)', () => {
   test('does not depend on process.cwd()', () => {
     const originalCwd = process.cwd();
     const result1 = resolveVendorDarePath();
-    // Change cwd and verify result is identical
     process.chdir('/tmp');
     try {
       const result2 = resolveVendorDarePath();
@@ -583,7 +627,6 @@ describe('resolveVendorDarePath (F135)', () => {
 
   test('resolves to project root, not packages/ (P1 depth check)', () => {
     const result = resolveVendorDarePath();
-    // Must NOT contain packages/ in the vendor path
     assert.ok(
       !result.includes(join('packages', 'vendor')),
       `path should be at project root, not inside packages/: ${result}`,
@@ -594,16 +637,20 @@ describe('resolveVendorDarePath (F135)', () => {
 // F135: resolveVenvPython helper
 describe('resolveVenvPython (F135)', () => {
   test('returns .venv/bin/python when it exists', () => {
-    const tmpDare = join(tmpdir(), `dare-test-helper-${Date.now()}`);
-    mkdirSync(join(tmpDare, '.venv', 'bin'), { recursive: true });
-    writeFileSync(join(tmpDare, '.venv', 'bin', 'python'), '#!/bin/sh\n');
+    const tempRoot = join(tmpdir(), `dare-test-${Date.now()}`);
+    const binDir = join(tempRoot, '.venv', 'bin');
+    mkdirSync(binDir, { recursive: true });
+    const py = join(binDir, 'python');
+    writeFileSync(py, '#!/usr/bin/env python\n');
 
-    const result = resolveVenvPython(tmpDare);
-    assert.strictEqual(result, join(tmpDare, '.venv', 'bin', 'python'));
+    const resolved = resolveVenvPython(tempRoot);
+    assert.strictEqual(resolved, py);
+    assert.ok(existsSync(resolved));
   });
 
   test('returns bare python when .venv does not exist', () => {
-    const result = resolveVenvPython('/nonexistent/path');
-    assert.strictEqual(result, 'python');
+    const tempRoot = join(tmpdir(), `dare-test-no-venv-${Date.now()}`);
+    const resolved = resolveVenvPython(tempRoot);
+    assert.strictEqual(resolved, 'python');
   });
 });
