@@ -37,6 +37,7 @@ packages/web/public/worker-*.js
 .gemini/
 *.swp
 *.swo
+.venv/
 
 # MCP config (personal, contains local URLs)
 .mcp.json

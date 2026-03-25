@@ -161,7 +161,7 @@ export class DareAgentService implements AgentService {
   constructor(options?: DareAgentServiceOptions) {
     this.catId = options?.catId ?? createCatId('dare');
     this.adapter = options?.adapter ?? process.env.DARE_ADAPTER;
-    this.model = options?.model ?? process.env.CAT_CAFE_DARE_MODEL_OVERRIDE;
+    this.model = options?.model ?? (process.env.CAT_CAFE_DARE_MODEL_OVERRIDE?.trim() || undefined);
     this.endpoint = options?.endpoint ?? process.env[DARE_ENDPOINT_ENV];
     this.apiKey = options?.apiKey ?? process.env[DARE_API_KEY_ENV];
     this.darePath = options?.darePath ?? process.env.DARE_PATH ?? resolveDefaultDarePath();
@@ -176,7 +176,14 @@ export class DareAgentService implements AgentService {
 
   async *invoke(prompt: string, options?: AgentServiceOptions): AsyncIterable<AgentMessage> {
     const workspaceConfig = readWorkspaceDareConfig(options?.workingDirectory);
-    const effectiveModel = options?.callbackEnv?.CAT_CAFE_DARE_MODEL_OVERRIDE ?? this.model;
+    let catModelFallback: string | undefined;
+    try {
+      catModelFallback = getCatModel(this.catId as string);
+    } catch {
+      // No model configured for this cat — leave undefined
+    }
+    const effectiveModel =
+      options?.callbackEnv?.CAT_CAFE_DARE_MODEL_OVERRIDE?.trim() || this.model || catModelFallback;
     const metadataModel = resolveMetadataModel(this.catId, effectiveModel, workspaceConfig);
 
     // Runtime mode: require resolvable DARE module path to avoid opaque "No module named client".

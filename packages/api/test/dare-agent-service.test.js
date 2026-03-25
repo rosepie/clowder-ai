@@ -155,17 +155,33 @@ describe('DareAgentService', () => {
   test('omits --adapter and --model when no explicit override is provided', async () => {
     const proc = createMockProcess();
     const spawnFn = mock.fn(() => proc);
-    const service = new DareAgentService({ catId: 'dare', spawnFn, darePath: '/opt/dare' });
-    const promise = collect(service.invoke('Test', { workingDirectory: '/tmp/project' }));
-    emitDareEvents(proc, [SESSION_STARTED, TASK_COMPLETED]);
-    await promise;
+    // Clear all model and adapter env vars so fallbacks don't inject flags
+    const oldCatModel = process.env.CAT_DARE_MODEL;
+    const oldOverride = process.env.CAT_CAFE_DARE_MODEL_OVERRIDE;
+    const oldAdapter = process.env.DARE_ADAPTER;
+    delete process.env.CAT_DARE_MODEL;
+    delete process.env.CAT_CAFE_DARE_MODEL_OVERRIDE;
+    delete process.env.DARE_ADAPTER;
+    try {
+      const service = new DareAgentService({ catId: 'dare', spawnFn, darePath: '/opt/dare' });
+      const promise = collect(service.invoke('Test', { workingDirectory: '/tmp/project' }));
+      emitDareEvents(proc, [SESSION_STARTED, TASK_COMPLETED]);
+      await promise;
 
-    const args = spawnFn.mock.calls[0].arguments[1];
-    assert.ok(!args.includes('--adapter'), `should not override adapter from workspace config: ${args}`);
-    assert.ok(!args.includes('--model'), `should not override model from workspace config: ${args}`);
-    const wsIdx = args.indexOf('--workspace');
-    assert.ok(wsIdx >= 0, `expected --workspace in args: ${args}`);
-    assert.strictEqual(args[wsIdx + 1], '/tmp/project');
+      const args = spawnFn.mock.calls[0].arguments[1];
+      assert.ok(!args.includes('--adapter'), `should not override adapter from workspace config: ${args}`);
+      assert.ok(!args.includes('--model'), `should not override model from workspace config: ${args}`);
+      const wsIdx = args.indexOf('--workspace');
+      assert.ok(wsIdx >= 0, `expected --workspace in args: ${args}`);
+      assert.strictEqual(args[wsIdx + 1], '/tmp/project');
+    } finally {
+      if (oldCatModel !== undefined) process.env.CAT_DARE_MODEL = oldCatModel;
+      else delete process.env.CAT_DARE_MODEL;
+      if (oldOverride !== undefined) process.env.CAT_CAFE_DARE_MODEL_OVERRIDE = oldOverride;
+      else delete process.env.CAT_CAFE_DARE_MODEL_OVERRIDE;
+      if (oldAdapter !== undefined) process.env.DARE_ADAPTER = oldAdapter;
+      else delete process.env.DARE_ADAPTER;
+    }
   });
 
   // P1-1: cwd must ALWAYS be darePath, workingDirectory goes to --workspace
@@ -602,7 +618,10 @@ describe('DareAgentService', () => {
     assert.strictEqual(command, 'python');
   });
 
-  test('returns explicit error when darePath is missing in runtime mode', async () => {
+  // NOTE: This test only works when vendor/dare-cli is NOT present.
+  // When vendor/dare-cli exists, resolveDefaultDarePath() always finds it,
+  // and `darePath: undefined` in options falls through via ?? to the default.
+  test('returns explicit error when darePath is missing in runtime mode', { skip: existsSync(join(resolveVendorDarePath(), 'client', '__main__.py')) }, async () => {
     const oldDarePath = process.env.DARE_PATH;
     delete process.env.DARE_PATH;
     try {
@@ -614,6 +633,40 @@ describe('DareAgentService', () => {
     } finally {
       if (oldDarePath !== undefined) process.env.DARE_PATH = oldDarePath;
       else delete process.env.DARE_PATH;
+    }
+  });
+
+  // Regression: CAT_DARE_MODEL env → getCatModel() fallback → --model CLI arg
+  // Without this fallback, huawei-modelarts adapter fails with "model is required"
+  test('passes --model from getCatModel() fallback when no explicit override (regression)', async () => {
+    const proc = createMockProcess();
+    const spawnFn = mock.fn(() => proc);
+    const oldOverride = process.env.CAT_CAFE_DARE_MODEL_OVERRIDE;
+    const oldCatModel = process.env.CAT_DARE_MODEL;
+    delete process.env.CAT_CAFE_DARE_MODEL_OVERRIDE;
+    process.env.CAT_DARE_MODEL = 'glm-5';
+
+    try {
+      const service = new DareAgentService({
+        catId: 'dare',
+        spawnFn,
+        darePath: '/opt/dare',
+        adapter: 'huawei-modelarts',
+        // No explicit model — must fall through to getCatModel()
+      });
+      const promise = collect(service.invoke('Test model fallback'));
+      emitDareEvents(proc, [SESSION_STARTED, TASK_COMPLETED]);
+      await promise;
+
+      const args = spawnFn.mock.calls[0].arguments[1];
+      const modelIdx = args.indexOf('--model');
+      assert.ok(modelIdx >= 0, `expected --model in args: ${args}`);
+      assert.strictEqual(args[modelIdx + 1], 'glm-5');
+    } finally {
+      if (oldOverride !== undefined) process.env.CAT_CAFE_DARE_MODEL_OVERRIDE = oldOverride;
+      else delete process.env.CAT_CAFE_DARE_MODEL_OVERRIDE;
+      if (oldCatModel !== undefined) process.env.CAT_DARE_MODEL = oldCatModel;
+      else delete process.env.CAT_DARE_MODEL;
     }
   });
 
