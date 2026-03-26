@@ -34,6 +34,7 @@ describe('Session Chain Routes', () => {
       threadStoreOverride ??
       mockThreadStore({
         'thread-1': { id: 'thread-1', createdBy: 'user-1' },
+        'thread-system': { id: 'thread-system', createdBy: 'system' },
         'unknown-thread': { id: 'unknown-thread', createdBy: 'user-1' },
       });
     app = Fastify();
@@ -120,6 +121,21 @@ describe('Session Chain Routes', () => {
     assert.equal(body.sessions.length, 2);
   });
 
+  it('GET /api/threads/:threadId/sessions allows authenticated users on system-owned threads', async () => {
+    const store = await setup();
+    store.create({ cliSessionId: 'cli-system-1', threadId: 'thread-system', catId: 'opus', userId: 'system' });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: '/api/threads/thread-system/sessions',
+      headers: { 'x-cat-cafe-user': 'default-user' },
+    });
+    assert.equal(res.statusCode, 200);
+    const body = JSON.parse(res.payload);
+    assert.equal(body.sessions.length, 1);
+    assert.equal(body.sessions[0].threadId, 'thread-system');
+  });
+
   it('GET /api/threads/:threadId/sessions?catId=opus filters by cat', async () => {
     const store = await setup();
     store.create({ cliSessionId: 'cli-1', threadId: 'thread-1', catId: 'opus', userId: 'user-1' });
@@ -150,6 +166,21 @@ describe('Session Chain Routes', () => {
     assert.equal(body.id, record.id);
     assert.equal(body.catId, 'opus');
     assert.equal(body.status, 'active');
+  });
+
+  it('GET /api/sessions/:sessionId allows authenticated users on system-owned threads', async () => {
+    const store = await setup();
+    const record = store.create({ cliSessionId: 'cli-system-2', threadId: 'thread-system', catId: 'opus', userId: 'system' });
+
+    const res = await app.inject({
+      method: 'GET',
+      url: `/api/sessions/${record.id}`,
+      headers: { 'x-cat-cafe-user': 'default-user' },
+    });
+    assert.equal(res.statusCode, 200);
+    const body = JSON.parse(res.payload);
+    assert.equal(body.id, record.id);
+    assert.equal(body.threadId, 'thread-system');
   });
 
   it('GET /api/sessions/:sessionId returns 404 for unknown session', async () => {

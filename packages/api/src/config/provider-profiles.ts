@@ -3,6 +3,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, renameSyn
 import { chmod, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises';
 import { dirname, relative, resolve, sep } from 'node:path';
 import type {
+  ACPModelAccessMode,
   AnthropicRuntimeProfile,
   BootstrapBinding,
   BootstrapBindings,
@@ -10,6 +11,7 @@ import type {
   CreateProviderProfileInput,
   NormalizedState,
   ProviderProfileAuthType,
+  ProviderProfileKind,
   ProviderProfileMeta,
   ProviderProfileMode,
   ProviderProfileProtocol,
@@ -31,12 +33,14 @@ import {
 } from './provider-profiles-root.js';
 
 export type {
+  ACPModelAccessMode,
   AnthropicRuntimeProfile,
   BootstrapBinding,
   BootstrapBindings,
   BuiltinAccountClient,
   CreateProviderProfileInput,
   ProviderProfileAuthType,
+  ProviderProfileKind,
   ProviderProfileMeta,
   ProviderProfileMode,
   ProviderProfileProtocol,
@@ -206,8 +210,25 @@ function normalizeBaseUrl(baseUrl: string | undefined): string | undefined {
 
 function normalizeProtocol(protocol: string | undefined): ProviderProfileProtocol | undefined {
   const trimmed = protocol?.trim();
-  if (trimmed === 'anthropic' || trimmed === 'openai' || trimmed === 'google') {
+  if (trimmed === 'anthropic' || trimmed === 'openai' || trimmed === 'google' || trimmed === 'acp') {
     return trimmed;
+  }
+  return undefined;
+}
+
+function normalizeStringList(values: string[] | undefined): string[] | undefined {
+  if (!Array.isArray(values)) return undefined;
+  return values.map((value) => value.trim()).filter((value) => value.length > 0);
+}
+
+function normalizeCwd(cwd: string | undefined | null): string | undefined {
+  const trimmed = cwd?.trim();
+  return trimmed ? trimmed : undefined;
+}
+
+function normalizeAcpModelAccessMode(value: string | undefined): ACPModelAccessMode | undefined {
+  if (value === 'self_managed' || value === 'clowder_default_profile') {
+    return value;
   }
   return undefined;
 }
@@ -224,11 +245,15 @@ function normalizeBuiltinModels(models: string[] | undefined, builtinModels: str
 }
 
 function authTypeToMode(authType: ProviderProfileAuthType): ProviderProfileMode {
-  return authType === 'api_key' ? 'api_key' : 'subscription';
+  if (authType === 'api_key') return 'api_key';
+  if (authType === 'none') return 'none';
+  return 'subscription';
 }
 
 function modeToAuthType(mode: ProviderProfileMode | undefined): ProviderProfileAuthType {
-  return mode === 'api_key' ? 'api_key' : 'oauth';
+  if (mode === 'api_key') return 'api_key';
+  if (mode === 'none') return 'none';
+  return 'oauth';
 }
 
 function slugify(value: string): string {
@@ -323,6 +348,44 @@ function normalizeProfile(profile: ProviderProfileMeta): ProviderProfileMeta {
       models: normalizeBuiltinModels(profile.models, builtin.models),
       createdAt: profile.createdAt || new Date().toISOString(),
       updatedAt: profile.updatedAt || profile.createdAt || new Date().toISOString(),
+    };
+  }
+
+  const normalizedProtocol = normalizeProtocol(profile.protocol);
+  const normalizedCommand = profile.command?.trim();
+  const normalizedArgs = normalizeStringList(profile.args);
+  const normalizedModelAccessMode = normalizeAcpModelAccessMode(profile.modelAccessMode);
+  const normalizedDefaultModelProfileRef = profile.defaultModelProfileRef?.trim();
+  const hasAcpSpecificFields = normalizedModelAccessMode !== undefined || Boolean(normalizedDefaultModelProfileRef);
+  // Prefer explicit kind. The legacy fallbacks are kept narrowly scoped for older ACP records
+  // that predate `kind: "acp"` normalization.
+  const isLegacyAcpProfile =
+    normalizedProtocol === 'acp' ||
+    (profile.authType === 'none' && (Boolean(normalizedCommand) || hasAcpSpecificFields)) ||
+    (Boolean(normalizedCommand) && hasAcpSpecificFields);
+  const isAcpProfile = profile.kind === 'acp' || isLegacyAcpProfile;
+
+  if (isAcpProfile) {
+    if (!normalizedCommand) {
+      throw new Error(`ACP account "${profile.id}" requires a command`);
+    }
+    const modelAccessMode = normalizedModelAccessMode ?? 'self_managed';
+    return {
+      id: profile.id,
+      displayName: profile.displayName?.trim() || profile.id,
+      kind: 'acp',
+      authType: 'none',
+      builtin: false,
+      protocol: 'acp',
+      command: normalizedCommand,
+      ...(normalizedArgs?.length ? { args: normalizedArgs } : {}),
+      ...(normalizeCwd(profile.cwd) ? { cwd: normalizeCwd(profile.cwd) } : {}),
+      modelAccessMode,
+      ...(modelAccessMode === 'clowder_default_profile' && normalizedDefaultModelProfileRef
+        ? { defaultModelProfileRef: normalizedDefaultModelProfileRef }
+        : {}),
+      createdAt: profile.createdAt,
+      updatedAt: profile.updatedAt,
     };
   }
 
@@ -826,6 +889,10 @@ function assertProviderSelector(profile: ProviderProfileMeta, selector: Provider
   const trimmed = selector?.trim();
   if (!trimmed) return;
   if (trimmed === profile.id) return;
+  if (profile.kind === 'acp') {
+    if (trimmed === 'acp') return;
+    throw new Error('profile not found');
+  }
   if (profile.kind === 'api_key') {
     if (isBuiltinClient(trimmed)) return;
     if (LEGACY_BUILTIN_ID_MAP[trimmed]) return;
@@ -978,39 +1045,74 @@ export async function createProviderProfile(
   return withProviderStoreLock(projectRoot, async (storageRoot) => {
     const { meta, secrets, metaPath, secretsPath } = await readRawAtStorageRoot(storageRoot);
     const displayName = requireDisplayName(input);
-    const authType = input.authType ?? modeToAuthType(input.mode);
-    if (authType !== 'api_key') {
-      throw new Error('only api_key accounts can be created');
-    }
-    const apiKey = input.apiKey?.trim();
-    if (!apiKey) throw new Error('apiKey is required for api_key mode');
+    const kind = input.kind ?? (input.protocol === 'acp' || input.authType === 'none' ? 'acp' : 'api_key');
+    const now = new Date().toISOString();
+    let profile: ProviderProfileMeta;
 
-    const profile: ProviderProfileMeta = {
-      id: createUniqueAccountId(meta.providers, displayName),
-      displayName,
-      kind: 'api_key',
-      authType: 'api_key',
-      builtin: false,
-      ...(normalizeProtocol(input.protocol) ? { protocol: normalizeProtocol(input.protocol) } : {}),
-      ...(normalizeBaseUrl(input.baseUrl) ? { baseUrl: normalizeBaseUrl(input.baseUrl) } : {}),
-      ...(normalizeModels(input.models) !== undefined ? { models: normalizeModels(input.models) } : {}),
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    if (kind === 'acp') {
+      const command = input.command?.trim();
+      if (!command) throw new Error('command is required for ACP providers');
+      const modelAccessMode = normalizeAcpModelAccessMode(input.modelAccessMode) ?? 'self_managed';
+      const defaultModelProfileRef = input.defaultModelProfileRef?.trim();
+      if (modelAccessMode === 'clowder_default_profile' && !defaultModelProfileRef) {
+        throw new Error('defaultModelProfileRef is required when modelAccessMode=clowder_default_profile');
+      }
+      if (input.setActive) {
+        throw new Error('ACP providers do not support bootstrap activation');
+      }
+      profile = {
+        id: createUniqueAccountId(meta.providers, displayName),
+        displayName,
+        kind: 'acp',
+        authType: 'none',
+        builtin: false,
+        protocol: 'acp',
+        command,
+        ...(normalizeStringList(input.args)?.length ? { args: normalizeStringList(input.args) } : {}),
+        ...(normalizeCwd(input.cwd) ? { cwd: normalizeCwd(input.cwd) } : {}),
+        modelAccessMode,
+        ...(modelAccessMode === 'clowder_default_profile' && defaultModelProfileRef
+          ? { defaultModelProfileRef }
+          : {}),
+        createdAt: now,
+        updatedAt: now,
+      };
+    } else {
+      const authType = input.authType ?? modeToAuthType(input.mode);
+      if (authType !== 'api_key') {
+        throw new Error('only api_key accounts can be created');
+      }
+      const apiKey = input.apiKey?.trim();
+      if (!apiKey) throw new Error('apiKey is required for api_key mode');
+
+      profile = {
+        id: createUniqueAccountId(meta.providers, displayName),
+        displayName,
+        kind: 'api_key',
+        authType: 'api_key',
+        builtin: false,
+        ...(normalizeProtocol(input.protocol) ? { protocol: normalizeProtocol(input.protocol) } : {}),
+        ...(normalizeBaseUrl(input.baseUrl) ? { baseUrl: normalizeBaseUrl(input.baseUrl) } : {}),
+        ...(normalizeModels(input.models) !== undefined ? { models: normalizeModels(input.models) } : {}),
+        createdAt: now,
+        updatedAt: now,
+      };
+
+      secrets.profiles[profile.id] = { apiKey };
+      if (input.setActive) {
+        const client = resolveClientFromSelector(input.provider ?? input.protocol, profile);
+        if (!client) {
+          throw new Error('client selector is required to bind an api_key account');
+        }
+        meta.bootstrapBindings[client] = {
+          enabled: true,
+          mode: 'api_key',
+          accountRef: profile.id,
+        };
+      }
+    }
 
     meta.providers.push(profile);
-    secrets.profiles[profile.id] = { apiKey };
-    if (input.setActive) {
-      const client = resolveClientFromSelector(input.provider ?? input.protocol, profile);
-      if (!client) {
-        throw new Error('client selector is required to bind an api_key account');
-      }
-      meta.bootstrapBindings[client] = {
-        enabled: true,
-        mode: 'api_key',
-        accountRef: profile.id,
-      };
-    }
     await writeRaw(metaPath, secretsPath, meta, secrets);
     return toViewProfile(profile, secrets);
   });
@@ -1027,8 +1129,46 @@ export async function updateProviderProfile(
     const profile = findProfile(meta, profileId);
     if (!profile) throw new Error('profile not found');
     assertProviderSelector(profile, provider);
+    if (profile.kind === 'acp') {
+      if (typeof input.name === 'string' || typeof input.displayName === 'string') {
+        profile.displayName = requireDisplayName(input);
+      }
+      if (input.command !== undefined) {
+        const command = input.command.trim();
+        if (!command) throw new Error('command is required for ACP providers');
+        profile.command = command;
+      }
+      if (input.args !== undefined) {
+        profile.args = normalizeStringList(input.args);
+      }
+      if (input.cwd !== undefined) {
+        const cwd = normalizeCwd(input.cwd);
+        if (cwd) profile.cwd = cwd;
+        else delete profile.cwd;
+      }
+      if (input.modelAccessMode !== undefined) {
+        const modelAccessMode = normalizeAcpModelAccessMode(input.modelAccessMode);
+        if (!modelAccessMode) throw new Error('invalid modelAccessMode');
+        profile.modelAccessMode = modelAccessMode;
+        if (modelAccessMode === 'self_managed') {
+          delete profile.defaultModelProfileRef;
+        }
+      }
+      if (input.defaultModelProfileRef !== undefined) {
+        const ref = input.defaultModelProfileRef?.trim();
+        if (ref) profile.defaultModelProfileRef = ref;
+        else delete profile.defaultModelProfileRef;
+      }
+      if ((profile.modelAccessMode ?? 'self_managed') === 'clowder_default_profile' && !profile.defaultModelProfileRef) {
+        throw new Error('defaultModelProfileRef is required when modelAccessMode=clowder_default_profile');
+      }
+      profile.updatedAt = new Date().toISOString();
+      await writeRaw(metaPath, secretsPath, meta, secrets);
+      return toViewProfile(profile, secrets);
+    }
     if (profile.kind === 'builtin') {
       const hasNonModelUpdates =
+        input.kind !== undefined ||
         input.name !== undefined ||
         input.displayName !== undefined ||
         input.mode !== undefined ||
@@ -1036,7 +1176,12 @@ export async function updateProviderProfile(
         input.protocol !== undefined ||
         input.baseUrl !== undefined ||
         input.apiKey !== undefined ||
-        input.modelOverride !== undefined;
+        input.modelOverride !== undefined ||
+        input.command !== undefined ||
+        input.args !== undefined ||
+        input.cwd !== undefined ||
+        input.modelAccessMode !== undefined ||
+        input.defaultModelProfileRef !== undefined;
       if (hasNonModelUpdates) {
         throw new Error('builtin accounts only support model updates');
       }
@@ -1153,6 +1298,19 @@ function toRuntimeProviderProfile(
   profile: ProviderProfileMeta,
   secrets: ProviderProfilesSecretsFile,
 ): RuntimeProviderProfile | null {
+  if (profile.kind === 'acp') {
+    return {
+      id: profile.id,
+      kind: 'acp',
+      authType: 'none',
+      protocol: 'acp',
+      ...(profile.command ? { command: profile.command } : {}),
+      ...(profile.args ? { args: profile.args } : {}),
+      ...(profile.cwd ? { cwd: profile.cwd } : {}),
+      ...(profile.modelAccessMode ? { modelAccessMode: profile.modelAccessMode } : {}),
+      ...(profile.defaultModelProfileRef ? { defaultModelProfileRef: profile.defaultModelProfileRef } : {}),
+    };
+  }
   if (profile.kind === 'api_key') {
     const apiKey = secrets.profiles[profile.id]?.apiKey;
     if (!apiKey) return null;

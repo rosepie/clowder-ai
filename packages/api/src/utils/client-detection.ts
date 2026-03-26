@@ -8,7 +8,7 @@
 import { execFile } from 'node:child_process';
 import { jiuwenClawBundleAvailable } from './jiuwenclaw-paths.js';
 
-type ClientId = 'anthropic' | 'openai' | 'google' | 'dare' | 'opencode' | 'antigravity' | 'relayclaw';
+type ClientId = 'anthropic' | 'openai' | 'google' | 'dare' | 'opencode' | 'antigravity' | 'relayclaw' | 'acp';
 
 interface ClientInfo {
   id: ClientId;
@@ -24,6 +24,7 @@ const CLIENT_COMMAND_MAP: ClientInfo[] = [
   { id: 'opencode', label: 'OpenCode', command: 'opencode' },
   { id: 'antigravity', label: 'Antigravity', command: 'antigravity' },
   { id: 'relayclaw', label: 'jiuwenClaw', command: 'jiuwenclaw-app' },
+  { id: 'acp', label: 'ACP', command: 'agent-teams gateway acp stdio' },
 ];
 
 export interface AvailableClient {
@@ -44,6 +45,11 @@ function commandExists(command: string): Promise<boolean> {
   });
 }
 
+async function acpRuntimeAvailable(): Promise<boolean> {
+  const checks = await Promise.all([commandExists('uv'), commandExists('agent-teams')]);
+  return checks.some(Boolean);
+}
+
 function relayClawSidecarAvailable(): boolean {
   return jiuwenClawBundleAvailable();
 }
@@ -52,7 +58,12 @@ function relayClawSidecarAvailable(): boolean {
 export async function detectAvailableClients(): Promise<AvailableClient[]> {
   const results = await Promise.all(
     CLIENT_COMMAND_MAP.map(async (info) => {
-      const available = info.id === 'relayclaw' ? relayClawSidecarAvailable() : await commandExists(info.command);
+      const available =
+        info.id === 'relayclaw'
+          ? relayClawSidecarAvailable()
+          : info.id === 'acp'
+            ? await acpRuntimeAvailable()
+            : await commandExists(info.command);
       return {
         id: info.id,
         label: info.label,

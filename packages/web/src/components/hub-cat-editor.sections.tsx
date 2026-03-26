@@ -319,7 +319,7 @@ export function AccountSection({
   const selectedProfile = availableProfiles.find((p) => p.id === form.accountRef);
   const callHint = buildCallHint(form.client, selectedProfile, form.defaultModel);
   const filteredClientOptions = availableClientIds
-    ? CLIENT_OPTIONS.filter((opt) => availableClientIds.has(opt.value))
+    ? CLIENT_OPTIONS.filter((opt) => opt.value === 'acp' || availableClientIds.has(opt.value))
     : CLIENT_OPTIONS;
   const providerSuggestions = useMemo(
     () => buildProviderSuggestions(selectedProfile?.models ?? []),
@@ -369,7 +369,11 @@ export function AccountSection({
                   })
                   .map((profile) => ({
                     value: profile.id,
-                    label: profile.builtin ? `${profile.displayName}（内置）` : `${profile.displayName}（API Key）`,
+                    label: profile.builtin
+                      ? `${profile.displayName}（内置）`
+                      : profile.kind === 'acp'
+                        ? `${profile.displayName}（ACP）`
+                        : `${profile.displayName}（API Key）`,
                   })),
               ]}
               onChange={(value) => onChange({ accountRef: value, defaultModel: '' })}
@@ -396,7 +400,9 @@ export function AccountSection({
                 onChange={(value) => onChange({ defaultModel: value })}
                 required
                 placeholder={
-                  form.client === 'opencode'
+                  form.client === 'acp'
+                    ? '显示标签，可留如 agent-teams/default'
+                    : form.client === 'opencode'
                     ? '例如 openai/gpt-5.4 或 openrouter/google/gemini-3-flash-preview'
                     : '模型标识符，如 claude-sonnet-4-5'
                 }

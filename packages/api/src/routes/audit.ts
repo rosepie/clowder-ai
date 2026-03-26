@@ -20,6 +20,7 @@ export interface AuditRoutesOptions {
 
 export const auditRoutes: FastifyPluginAsync<AuditRoutesOptions> = async (app, opts) => {
   const { threadStore } = opts;
+  const canAccessThread = (createdBy: string, userId: string) => createdBy === userId || createdBy === 'system';
 
   app.get<{ Params: { threadId: string } }>('/api/audit/thread/:threadId', async (request, reply) => {
     const { threadId } = request.params;
@@ -36,7 +37,7 @@ export const auditRoutes: FastifyPluginAsync<AuditRoutesOptions> = async (app, o
       return { error: 'Thread not found' };
     }
 
-    if (thread.createdBy !== userId) {
+    if (!canAccessThread(thread.createdBy, userId)) {
       reply.status(403);
       return { error: 'Access denied' };
     }

@@ -43,7 +43,7 @@ const cliSchema = z.object({
   defaultArgs: z.array(z.string().min(1)).optional(),
 });
 
-const clientSchema = z.enum(['anthropic', 'openai', 'google', 'dare', 'antigravity', 'opencode', 'relayclaw']);
+const clientSchema = z.enum(['anthropic', 'openai', 'google', 'dare', 'antigravity', 'opencode', 'relayclaw', 'acp']);
 const catIdSchema = z
   .string()
   .min(1)
@@ -180,6 +180,8 @@ function defaultCliForClient(client: CatProvider): { command: string; outputForm
       return { command: 'a2a', outputFormat: 'json' };
     case 'relayclaw':
       return { command: 'jiuwenclaw-app', outputFormat: 'json' };
+    case 'acp':
+      return { command: 'agent-teams', outputFormat: 'json' };
     default:
       return { command: client, outputFormat: 'json' };
   }

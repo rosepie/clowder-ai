@@ -13,6 +13,8 @@ const CAT_CAFE_MCP_CALLBACK_ENV_KEYS = [
 ] as const;
 
 export interface RelayClawCatCafeMcpServer {
+  command: string;
+  args: string[];
   serverPath: string;
   repoRoot: string;
 }
@@ -29,9 +31,24 @@ export function resolveCatCafeMcpServer(
 
   for (const root of candidateRoots) {
     const repoRoot = resolve(root);
-    const serverPath = resolve(repoRoot, 'packages/mcp-server/dist/index.js');
-    if (existsSync(serverPath)) {
-      return { serverPath, repoRoot };
+    const distServerPath = resolve(repoRoot, 'packages/mcp-server/dist/index.js');
+    if (existsSync(distServerPath)) {
+      return {
+        command: process.execPath,
+        args: [distServerPath],
+        serverPath: distServerPath,
+        repoRoot,
+      };
+    }
+
+    const sourceServerPath = resolve(repoRoot, 'packages/mcp-server/src/index.ts');
+    if (existsSync(sourceServerPath)) {
+      return {
+        command: process.execPath,
+        args: ['--import', 'tsx', sourceServerPath],
+        serverPath: sourceServerPath,
+        repoRoot,
+      };
     }
   }
 
@@ -50,8 +67,8 @@ export function buildCatCafeMcpRequestConfig(options?: AgentServiceOptions): Rec
   if (!resolved) return undefined;
 
   return {
-    command: 'node',
-    args: [resolved.serverPath],
+    command: resolved.command,
+    args: resolved.args,
     cwd: resolved.repoRoot,
     env: buildCatCafeMcpEnv(options?.callbackEnv),
   };

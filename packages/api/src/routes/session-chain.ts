@@ -34,6 +34,7 @@ interface SessionChainRouteOptions extends FastifyPluginOptions {
 
 export async function sessionChainRoutes(app: FastifyInstance, opts: SessionChainRouteOptions): Promise<void> {
   const { sessionChainStore, threadStore, messageStore, transcriptReader, sessionSealer } = opts;
+  const canAccessThread = (createdBy: string, userId: string) => createdBy === userId || createdBy === 'system';
 
   app.get<{
     Params: { threadId: string };
@@ -47,7 +48,7 @@ export async function sessionChainRoutes(app: FastifyInstance, opts: SessionChai
 
     const { threadId } = request.params;
     const thread = await threadStore.get(threadId);
-    if (!thread || thread.createdBy !== userId) {
+    if (!thread || !canAccessThread(thread.createdBy, userId)) {
       reply.status(403);
       return { error: 'Access denied' };
     }
@@ -94,7 +95,7 @@ export async function sessionChainRoutes(app: FastifyInstance, opts: SessionChai
       reply.status(404);
       return { error: 'Thread not found' };
     }
-    if (thread.createdBy !== userId) {
+    if (!canAccessThread(thread.createdBy, userId)) {
       reply.status(403);
       return { error: 'Access denied' };
     }
@@ -125,7 +126,7 @@ export async function sessionChainRoutes(app: FastifyInstance, opts: SessionChai
       reply.status(404);
       return { error: 'Thread not found' };
     }
-    if (thread.createdBy !== userId) {
+    if (!canAccessThread(thread.createdBy, userId)) {
       reply.status(403);
       return { error: 'Access denied' };
     }
@@ -246,7 +247,7 @@ export async function sessionChainRoutes(app: FastifyInstance, opts: SessionChai
       reply.status(404);
       return { error: 'Thread not found' };
     }
-    if (thread.createdBy !== userId) {
+    if (!canAccessThread(thread.createdBy, userId)) {
       reply.status(403);
       return { error: 'Access denied' };
     }

@@ -462,7 +462,7 @@ describe('useChatHistory replace hydration', () => {
         type: 'assistant' as const,
         catId: 'codex',
         content: 'partial draft content',
-        thinking: 'draft thinking',
+        thinking: 'draft thinking ',
         toolEvents: [{ id: 'te-draft-1', type: 'tool_use' as const, label: 'Read file', timestamp: now - 10 }],
         origin: 'stream' as const,
         extra: { stream: { invocationId: 'inv-2' } },
@@ -499,7 +499,7 @@ describe('useChatHistory replace hydration', () => {
           id: 'server-msg-2',
           catId: 'codex',
           content: 'full completed response',
-          thinking: 'draft thinking\n\n---\n\nfinal reasoning',
+          thinking: 'draft thinking final reasoning',
           origin: 'stream',
           timestamp: now,
           extra: { stream: { invocationId: 'inv-2' } },
@@ -517,7 +517,7 @@ describe('useChatHistory replace hydration', () => {
     expect(useChatStore.getState().messages.find((m) => m.id === 'server-msg-2')).toEqual(
       expect.objectContaining({
         content: 'full completed response',
-        thinking: 'draft thinking\n\n---\n\nfinal reasoning',
+        thinking: 'draft thinking final reasoning',
         origin: 'stream',
         extra: { stream: { invocationId: 'inv-2' } },
         toolEvents: [

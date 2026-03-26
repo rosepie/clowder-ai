@@ -1,10 +1,11 @@
-export type ProviderProfileProtocol = 'anthropic' | 'openai' | 'google';
+export type ProviderProfileProtocol = 'anthropic' | 'openai' | 'google' | 'acp';
 export type ProviderProfileProvider = string;
-export type ProviderProfileMode = 'subscription' | 'api_key';
-export type ProviderProfileAuthType = 'oauth' | 'api_key';
+export type ProviderProfileMode = 'subscription' | 'api_key' | 'none';
+export type ProviderProfileAuthType = 'oauth' | 'api_key' | 'none';
 export type BuiltinAccountClient = 'anthropic' | 'openai' | 'google' | 'dare' | 'opencode';
-export type ProviderProfileKind = 'builtin' | 'api_key';
+export type ProviderProfileKind = 'builtin' | 'api_key' | 'acp';
 export type BootstrapBindingMode = 'oauth' | 'api_key' | 'skip';
+export type ACPModelAccessMode = 'self_managed' | 'clowder_default_profile';
 
 export interface BootstrapBinding {
   enabled: boolean;
@@ -24,6 +25,11 @@ export interface ProviderProfileMeta {
   protocol?: ProviderProfileProtocol;
   baseUrl?: string;
   models?: string[];
+  command?: string;
+  args?: string[];
+  cwd?: string;
+  modelAccessMode?: ACPModelAccessMode;
+  defaultModelProfileRef?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -46,6 +52,7 @@ export interface ProviderProfilesView {
 }
 
 export interface CreateProviderProfileInput {
+  kind?: ProviderProfileKind;
   provider?: ProviderProfileProvider;
   name?: string;
   displayName?: string;
@@ -56,10 +63,16 @@ export interface CreateProviderProfileInput {
   apiKey?: string;
   modelOverride?: string;
   models?: string[];
+  command?: string;
+  args?: string[];
+  cwd?: string;
+  modelAccessMode?: ACPModelAccessMode;
+  defaultModelProfileRef?: string;
   setActive?: boolean;
 }
 
 export interface UpdateProviderProfileInput {
+  kind?: ProviderProfileKind;
   name?: string;
   displayName?: string;
   mode?: ProviderProfileMode;
@@ -69,6 +82,11 @@ export interface UpdateProviderProfileInput {
   apiKey?: string;
   modelOverride?: string | null;
   models?: string[];
+  command?: string;
+  args?: string[];
+  cwd?: string | null;
+  modelAccessMode?: ACPModelAccessMode;
+  defaultModelProfileRef?: string | null;
 }
 
 export interface RuntimeProviderProfile {
@@ -80,6 +98,11 @@ export interface RuntimeProviderProfile {
   baseUrl?: string;
   apiKey?: string;
   models?: string[];
+  command?: string;
+  args?: string[];
+  cwd?: string;
+  modelAccessMode?: ACPModelAccessMode;
+  defaultModelProfileRef?: string;
 }
 
 export interface AnthropicRuntimeProfile {

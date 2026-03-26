@@ -2,7 +2,7 @@ import type { CatData } from '@/hooks/useCatData';
 import type { BuiltinAccountClient, ProfileItem } from './hub-provider-profiles.types';
 import type { CatStrategyEntry, StrategyType } from './hub-strategy-types';
 
-export type ClientValue = 'anthropic' | 'openai' | 'google' | 'dare' | 'opencode' | 'relayclaw' | 'antigravity';
+export type ClientValue = 'anthropic' | 'openai' | 'google' | 'dare' | 'opencode' | 'relayclaw' | 'antigravity' | 'acp';
 export type SessionChainValue = 'true' | 'false';
 export type CodexSandboxMode = 'read-only' | 'workspace-write' | 'danger-full-access';
 export type CodexApprovalPolicy = 'untrusted' | 'on-failure' | 'on-request' | 'never';
@@ -65,6 +65,7 @@ export const CLIENT_OPTIONS: Array<{ value: ClientValue; label: string }> = [
   { value: 'dare', label: 'Dare' },
   { value: 'opencode', label: 'OpenCode' },
   { value: 'relayclaw', label: 'jiuwenClaw' },
+  { value: 'acp', label: 'ACP' },
   { value: 'antigravity', label: 'Antigravity' },
 ];
 
@@ -219,6 +220,9 @@ export function builtinAccountIdForClient(client: ClientValue): string | null {
 }
 
 export function filterAccounts(client: ClientValue, profiles: ProfileItem[]): ProfileItem[] {
+  if (client === 'acp') {
+    return profiles.filter((profile) => profile.kind === 'acp');
+  }
   if (client === 'relayclaw') {
     return profiles.filter((profile) => profile.authType === 'api_key' && profile.protocol === 'openai');
   }

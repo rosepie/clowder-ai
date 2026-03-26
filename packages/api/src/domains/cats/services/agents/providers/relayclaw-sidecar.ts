@@ -133,8 +133,8 @@ export class DefaultRelayClawSidecarController implements RelayClawSidecarContro
         ...(catCafeMcp
           ? {
               CAT_CAFE_MCP_SERVER_PATH: catCafeMcp.serverPath,
-              CAT_CAFE_MCP_COMMAND: 'node',
-              CAT_CAFE_MCP_ARGS_JSON: JSON.stringify([catCafeMcp.serverPath]),
+              CAT_CAFE_MCP_COMMAND: catCafeMcp.command,
+              CAT_CAFE_MCP_ARGS_JSON: JSON.stringify(catCafeMcp.args),
               CAT_CAFE_MCP_CWD: catCafeMcp.repoRoot,
             }
           : {}),

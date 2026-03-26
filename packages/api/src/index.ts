@@ -618,6 +618,11 @@ async function main(): Promise<void> {
           });
           break;
         }
+        case 'acp': {
+          const { ACPAgentService } = await import('./domains/cats/services/agents/providers/ACPAgentService.js');
+          service = new ACPAgentService({ catId });
+          break;
+        }
         default:
           app.log.warn(`[api] Unknown provider "${config.provider}" for cat "${id}". It will not be routable.`);
           continue;
