@@ -572,11 +572,7 @@ function escapePowerShellString(value) {
 }
 
 function runWindowsNpmInstall(npmCmdPath, packageWindowsDir) {
-  run('powershell.exe', [
-    '-NoProfile',
-    '-Command',
-    `Set-Location '${escapePowerShellString(packageWindowsDir)}'; & '${escapePowerShellString(npmCmdPath)}' ${WINDOWS_RUNTIME_NPM_ARGS.join(' ')}`,
-  ]);
+  run(npmCmdPath, WINDOWS_RUNTIME_NPM_ARGS, { cwd: packageWindowsDir, shell: true });
 }
 
 function materializeSharedDependency(stagePackagesDir, packageName) {
