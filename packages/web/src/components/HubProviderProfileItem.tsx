@@ -2,7 +2,7 @@
 
 import { useCallback, useState } from 'react';
 import type { ProfileItem } from './hub-provider-profiles.types';
-import { TagEditor } from './hub-tag-editor';
+import { TagEditor, TagPillList } from './hub-tag-editor';
 import { useConfirm } from './useConfirm';
 
 export interface ProfileEditPayload {
@@ -147,22 +147,32 @@ export function HubProviderProfileItem({ profile, busy, onSave, onDelete }: HubP
           {summaryText(profile) ? <p className="text-sm text-[#8A776B]">{summaryText(profile)}</p> : null}
           <div className="space-y-2">
             <p className="text-xs font-semibold text-[#8A776B]">可用模型</p>
-            <TagEditor
-              tags={profile.models ?? []}
-              tone={profile.builtin ? 'orange' : 'purple'}
-              addLabel="+ 添加"
-              placeholder="输入模型名"
-              emptyLabel="(暂无模型)"
-              minCount={1}
-              onChange={(nextModels) => {
-                if (busy) return;
-                void onSave(profile.id, {
-                  displayName: profile.displayName,
-                  ...(profile.authType === 'api_key' ? { baseUrl: profile.baseUrl ?? '' } : {}),
-                  models: nextModels,
-                });
-              }}
-            />
+            {profile.builtin ? (
+              <div className="flex flex-wrap gap-2">
+                <TagPillList
+                  tags={profile.models ?? []}
+                  emptyLabel="(暂无模型)"
+                  tone="orange"
+                />
+              </div>
+            ) : (
+              <TagEditor
+                tags={profile.models ?? []}
+                tone="purple"
+                addLabel="+ 添加"
+                placeholder="输入模型名"
+                emptyLabel="(暂无模型)"
+                minCount={1}
+                onChange={(nextModels) => {
+                  if (busy) return;
+                  void onSave(profile.id, {
+                    displayName: profile.displayName,
+                    ...(profile.authType === 'api_key' ? { baseUrl: profile.baseUrl ?? '' } : {}),
+                    models: nextModels,
+                  });
+                }}
+              />
+            )}
           </div>
         </div>
         <div className="flex shrink-0 flex-wrap gap-1.5">

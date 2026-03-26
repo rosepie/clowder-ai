@@ -68,6 +68,7 @@ $configuredRedisUrl = if ($runtimeState -and $runtimeState.RedisUrl) {
 } else {
     Get-InstallerEnvValueFromFile -EnvFile $envFile -Key "REDIS_URL"
 }
+$redisStartedByLauncher = [bool]($runtimeState -and $runtimeState.RedisStartedByLauncher)
 if (-not $configuredRedisUrl -and $env:REDIS_URL) {
     $configuredRedisUrl = $env:REDIS_URL.Trim()
 }
@@ -182,7 +183,13 @@ if ($configuredRedisUrl -and -not (Test-LocalRedisUrl -RedisUrl $configuredRedis
         } else {
             $managedRedisPid = Get-ManagedProcessId -ManagedPidFile $redisPidFile
             $ownedRedisConnections = @()
+            if ($redisStartedByLauncher) {
+                $ownedRedisConnections = @($redisConnections)
+            }
             foreach ($conn in $redisConnections) {
+                if ($redisStartedByLauncher) {
+                    break
+                }
                 $isManagedPid = $managedRedisPid -and ($conn.OwningProcess -eq $managedRedisPid)
                 $isClowderOwned = $isManagedPid -or (Test-ClowderOwnedProcess -ProcessId $conn.OwningProcess -ClowderProjectRoot $ProjectRoot)
                 if (-not $isClowderOwned) {
@@ -200,6 +207,9 @@ if ($configuredRedisUrl -and -not (Test-LocalRedisUrl -RedisUrl $configuredRedis
                 if ($redisPing -eq "PONG") {
                     & $redisCli -p $RedisPort @redisAuthArgs shutdown save 2>$null
                     Write-Ok "Redis stopped (port $RedisPort)"
+                } elseif ($redisStartedByLauncher -and $managedRedisPid) {
+                    Stop-Process -Id $managedRedisPid -Force -ErrorAction SilentlyContinue
+                    Write-Warn "Redis required forced termination (port $RedisPort)"
                 } else {
                     Write-Warn "Redis (port $RedisPort) - not running"
                 }

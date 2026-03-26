@@ -6,6 +6,10 @@ import { fetchGameState } from './useGameApi';
  * Called on socket reconnect or page refresh to recover game state.
  */
 export async function reconnectGame(threadId: string): Promise<void> {
+  if (threadId === 'default') {
+    useGameStore.getState().clearGame();
+    return;
+  }
   try {
     const view = await fetchGameState(threadId);
     if (view) {

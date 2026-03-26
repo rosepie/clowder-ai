@@ -484,6 +484,7 @@ $runtimeEnvOverrides = @{
         RedisPort = if ($useRedis -and -not $useExternalRedis) { [int]$RedisPort } else { $null }
         RedisUrl = if ($env:REDIS_URL) { $env:REDIS_URL } else { "" }
         UseExternalRedis = [bool]$useExternalRedis
+        RedisStartedByLauncher = [bool]$startedRedis
         PreferRandomPorts = [bool]$PreferRandomPorts
         ApiPidFile = $ApiPidFile
         WebPidFile = $WebPidFile

@@ -189,8 +189,18 @@ test('Windows bundled runtime prefers random frontend, API, and Redis ports and 
   );
   assert.match(startWindowsScript, /Write-Ok "Redis port selected: \$RedisPort \(random\)"/);
   assert.match(startWindowsScript, /Write-WindowsRuntimeStateFile -StateFile \$RuntimeStateFile -State/);
+  assert.match(startWindowsScript, /RedisStartedByLauncher = \[bool\]\$startedRedis/);
   assert.match(startWindowsScript, /NEXT_PUBLIC_API_URL = "http:\/\/127\.0\.0\.1:\$ApiPort"/);
   assert.match(startWindowsScript, /Remove-WindowsRuntimeStateFile -StateFile \$RuntimeStateFile/);
+});
+
+test('Windows stop script force-stops Redis that was started by the launcher during uninstall', () => {
+  assert.match(stopWindowsScript, /\$redisStartedByLauncher = \[bool\]\(\$runtimeState -and \$runtimeState\.RedisStartedByLauncher\)/);
+  assert.match(stopWindowsScript, /if \(\$redisStartedByLauncher\) \{\s+\$ownedRedisConnections = @\(\$redisConnections\)\s+\}/s);
+  assert.match(stopWindowsScript, /if \(\$redisStartedByLauncher\) \{\s+break\s+\}/s);
+  assert.match(stopWindowsScript, /elseif \(\$redisStartedByLauncher -and \$managedRedisPid\) \{/);
+  assert.match(stopWindowsScript, /Stop-Process -Id \$managedRedisPid -Force -ErrorAction SilentlyContinue/);
+  assert.match(stopWindowsScript, /Write-Warn "Redis required forced termination \(port \$RedisPort\)"/);
 });
 
 test('Windows installer and startup reuse shared tool resolution instead of raw pnpm PATH lookups', () => {

@@ -40,6 +40,12 @@ export function AuditEventsTab({ threadId }: AuditEventsTabProps) {
   const [expandedId, setExpandedId] = useState<string | null>(null);
 
   const fetchEvents = useCallback(async () => {
+    if (threadId === 'default') {
+      setEvents([]);
+      setError(false);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
     setError(false);
     try {

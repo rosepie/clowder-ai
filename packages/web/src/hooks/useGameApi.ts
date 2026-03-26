@@ -19,6 +19,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export async function fetchGameState(threadId: string, viewer?: string): Promise<GameView | null> {
+  if (threadId === 'default') return null;
   try {
     const params = viewer ? `?viewer=${viewer}` : '';
     return await apiFetch<GameView>(`/api/threads/${threadId}/game${params}`);
