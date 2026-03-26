@@ -58,12 +58,14 @@ export function CreateApiKeyProfileSection({
             value={displayName}
             onChange={(e) => onDisplayNameChange(e.target.value)}
             placeholder="账号显示名，如 my-glm"
+            autoComplete="off"
             className="w-full rounded border border-[#E8DCCF] bg-white px-3 py-2 text-sm placeholder:text-[#C4B5A8]"
           />
           <input
             value={baseUrl}
             onChange={(e) => onBaseUrlChange(e.target.value)}
             placeholder="API 服务地址，如 https://api.example.com/v1"
+            autoComplete="off"
             className="w-full rounded border border-[#E8DCCF] bg-white px-3 py-2 text-sm placeholder:text-[#C4B5A8]"
           />
           <input

@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useCatData } from '@/hooks/useCatData';
 import { useChatStore } from '@/stores/chatStore';
 import { apiFetch } from '@/utils/api-client';
@@ -163,6 +163,15 @@ export function CatCafeHub() {
     if (open) fetchData();
   }, [open, fetchData]);
 
+  const modalRef = useRef<HTMLDivElement>(null);
+
+  // Trap focus inside modal when open — prevents keystrokes leaking to sidebar search
+  useEffect(() => {
+    if (!open) return;
+    const el = modalRef.current;
+    if (el) el.focus();
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const h = (e: KeyboardEvent) => {
@@ -177,7 +186,9 @@ export function CatCafeHub() {
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50" onClick={closeHub}>
       <div
-        className="rounded-2xl shadow-xl max-w-4xl w-full mx-4 h-[85vh] flex flex-col"
+        ref={modalRef}
+        tabIndex={-1}
+        className="rounded-2xl shadow-xl max-w-4xl w-full mx-4 h-[85vh] flex flex-col outline-none"
         style={{ backgroundColor: '#FDF8F3' }}
         onClick={(e) => e.stopPropagation()}
       >

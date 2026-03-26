@@ -61,6 +61,7 @@ export function HubProviderProfileItem({ profile, busy, onSave, onDelete }: HubP
             value={editDisplayName}
             onChange={(e) => setEditDisplayName(e.target.value)}
             placeholder="账号显示名"
+            autoComplete="off"
             className="w-full rounded border border-[#E8DCCF] bg-white px-3 py-2 text-sm placeholder:text-[#C4B5A8]"
           />
           {profile.authType === 'api_key' ? (
@@ -69,6 +70,7 @@ export function HubProviderProfileItem({ profile, busy, onSave, onDelete }: HubP
                 value={editBaseUrl}
                 onChange={(e) => setEditBaseUrl(e.target.value)}
                 placeholder="API 服务地址，如 https://api.example.com/v1"
+                autoComplete="off"
                 className="w-full rounded border border-[#E8DCCF] bg-white px-3 py-2 text-sm placeholder:text-[#C4B5A8]"
               />
               <div className="relative">

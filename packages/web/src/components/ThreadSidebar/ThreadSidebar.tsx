@@ -496,6 +496,7 @@ export function ThreadSidebar({ onClose, className, onBootcampClick, onHubClick 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="搜索对话、项目或 ID..."
+            autoComplete="off"
             className="w-full rounded-lg border border-cocreator-light px-2.5 py-1.5 text-xs text-gray-700 placeholder:text-gray-400 focus:outline-none focus:border-cocreator-primary"
           />
           {unreadIds.size > 0 && (
